@@ -1,8 +1,10 @@
 """Job Search Command Center - FastAPI application."""
 
 from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -10,6 +12,18 @@ from . import tracker, search
 from .models import StatusUpdate, CandidateAdd
 
 app = FastAPI(title="Job Search Command Center")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://joshuabarua.github.io",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
