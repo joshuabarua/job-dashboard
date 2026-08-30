@@ -37,11 +37,15 @@ jobs:
         run: python scripts/run_search.py
         env:
           JOBS_TRACKER_CSV: ${{ github.workspace }}/jobs_tracker.csv
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
       - name: Build static site
         run: python scripts/build_static.py
         env:
           JOBS_TRACKER_CSV: ${{ github.workspace }}/jobs_tracker.csv
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
       - name: Commit updated data and site
         run: |

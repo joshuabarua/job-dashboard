@@ -13,6 +13,8 @@ import shutil
 from datetime import date
 from pathlib import Path
 
+import app.db as db
+
 BASE_DIR = Path(__file__).resolve().parent
 CSV_FILE = Path(os.environ.get("JOBS_TRACKER_CSV", r"C:\Users\Josh\job-dashboard\jobs_tracker.csv"))
 OVERRIDES_FILE = BASE_DIR / "overrides.json"
@@ -69,8 +71,11 @@ def add_job(candidate):
         "recommended_cv": candidate.get("recommended_cv", ""),
         "why_fit": candidate.get("why_fit", ""),
         "application_strategy": candidate.get("application_strategy", ""),
-        "tags": candidate.get("tags", ""),
+        "tags": candidate.get("tags", "")
     })
+    if db.ENABLED:
+        db.insert(row)
+        return True, "ok"
     write_header = not CSV_FILE.exists()
     with open(CSV_FILE, "a", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
@@ -99,6 +104,9 @@ def sort_jobs(jobs, sort_by="date"):
 def remove_job(identifier):
     """Remove a job by notion_id or url and persist the CSV."""
     identifier = identifier.strip()
+    if db.ENABLED:
+        db.delete(identifier)
+        return True, "ok"
     if not CSV_FILE.exists():
         return False, "CSV not found"
     with open(CSV_FILE, "r", encoding="utf-8", newline="") as f:
@@ -158,10 +166,15 @@ def _write_overrides(overrides):
 
 def get_jobs():
     overrides = _read_overrides()
+    if db.ENABLED:
+        rows = db.fetch_all()
+        overrides = {}
+    else:
+        rows = _read_csv()
     jobs = []
-    for row in _read_csv():
+    for row in rows:
         j = dict(row)
-        j.setdefault("status", "New")
+        j["status"] = j.get("status") or "New"
         j.setdefault("date", "")
         j.setdefault("match_score", "")
         j["match_score"] = _norm_score(j.get("match_score"))
@@ -178,6 +191,9 @@ def set_status(identifier, status):
     status = status.strip()
     if status not in WORKFLOW:
         return False, f"Invalid status: {status!r}"
+    if db.ENABLED:
+        db.update_status(identifier, status)
+        return True, "ok"
     jobs = get_jobs()
     match = None
     for j in jobs:
