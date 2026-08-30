@@ -105,7 +105,10 @@ def remove_job(identifier):
     """Remove a job by notion_id or url and persist the CSV."""
     identifier = identifier.strip()
     if db.ENABLED:
-        db.delete(identifier)
+        if _is_uuid(identifier):
+            db.delete_by_id(identifier)
+        else:
+            db.delete(identifier)
         return True, "ok"
     if not CSV_FILE.exists():
         return False, "CSV not found"
@@ -187,12 +190,22 @@ def get_jobs():
     return sort_jobs(jobs)
 
 
+def _is_uuid(value):
+    return bool(re.fullmatch(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        value or ""
+    ))
+
+
 def set_status(identifier, status):
     status = status.strip()
     if status not in WORKFLOW:
         return False, f"Invalid status: {status!r}"
     if db.ENABLED:
-        db.update_status(identifier, status)
+        if _is_uuid(identifier):
+            db.update_by_id(identifier, status)
+        else:
+            db.update_status(identifier, status)
         return True, "ok"
     jobs = get_jobs()
     match = None

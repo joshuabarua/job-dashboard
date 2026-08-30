@@ -279,7 +279,7 @@ function cmd() {
 
     async setStatus(job, newStatus = null) {
       const status = newStatus || job.status;
-      const id = job.notion_id || job.url || job._key;
+      const id = job.id || job.notion_id || job.url || job._key;
       const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -287,7 +287,7 @@ function cmd() {
       });
       const res = await r.json();
       if (res.ok) await this.fetchAll();
-      else { alert(res.error); await this.fetchAll(); }
+      else { alert(res.error || res.detail || "Update failed"); await this.fetchAll(); }
     },
     async markApplied(job) {
       job.status = "Applied";
@@ -296,7 +296,7 @@ function cmd() {
 
     async removeJob(job) {
       if (!confirm('Remove this job?')) return;
-      const id = job.notion_id || job.url || job._key;
+      const id = job.id || job.notion_id || job.url || job._key;
       try {
         const r = await fetch(`/api/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
         const res = await r.json();
@@ -315,7 +315,7 @@ function cmd() {
       });
       const res = await r.json();
       if (res.ok) await this.fetchAll();
-      else { this.overrides[key] = "New"; alert(res.error); }
+      else { this.overrides[key] = "New"; alert(res.error || res.detail || "Update failed"); }
     },
 
     async clearOverride(key) {
@@ -377,7 +377,7 @@ function cmd() {
         await this.fetchAll();
       } else {
         c._dup_flag = true;
-        alert(res.error);
+        alert(res.error || res.detail || "Add failed");
       }
     },
   };

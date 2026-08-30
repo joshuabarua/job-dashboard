@@ -40,7 +40,9 @@ def _to_str(value):
 
 
 def _row_to_job(row):
-    return {k: _to_str(row.get(k, "")) for k in _CSV_FIELDS}
+    j = {k: _to_str(row.get(k, "")) for k in _CSV_FIELDS}
+    j["id"] = _to_str(row.get("id"))
+    return j
 
 
 def fetch_all():
@@ -59,6 +61,7 @@ def insert(job):
     if not ENABLED or client is None:
         raise RuntimeError("Supabase not configured")
     row = _row_to_job(job)
+    row.pop("id", None)  # Supabase generates the primary key
     try:
         client.table("jobs").insert(row).execute()
     except Exception as exc:
@@ -76,6 +79,15 @@ def update_status(identifier, status):
         raise RuntimeError(f"update_status failed: {exc}") from exc
 
 
+def update_by_id(id, status):
+    if not ENABLED or client is None:
+        raise RuntimeError("Supabase not configured")
+    try:
+        client.table("jobs").update({"status": status}).eq("id", id).execute()
+    except Exception as exc:
+        raise RuntimeError(f"update_by_id failed: {exc}") from exc
+
+
 def delete(identifier):
     if not ENABLED or client is None:
         raise RuntimeError("Supabase not configured")
@@ -85,3 +97,12 @@ def delete(identifier):
         ).execute()
     except Exception as exc:
         raise RuntimeError(f"delete failed: {exc}") from exc
+
+
+def delete_by_id(id):
+    if not ENABLED or client is None:
+        raise RuntimeError("Supabase not configured")
+    try:
+        client.table("jobs").delete().eq("id", id).execute()
+    except Exception as exc:
+        raise RuntimeError(f"delete_by_id failed: {exc}") from exc

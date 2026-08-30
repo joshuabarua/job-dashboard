@@ -116,10 +116,13 @@ def meta():
 
 @app.patch("/api/jobs/{notion_id}/status")
 def update_status(notion_id: str, payload: StatusUpdate):
-    ok, msg = tracker.set_status(notion_id, payload.status)
-    if not ok:
-        return {"ok": False, "error": msg}
-    return {"ok": True}
+    try:
+        ok, msg = tracker.set_status(notion_id, payload.status)
+        if not ok:
+            return {"ok": False, "error": msg}
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/api/search")
@@ -133,16 +136,22 @@ def search_jobs(track: str | None = Query(default=None)):
 
 @app.post("/api/jobs/add")
 def add_job(candidate: CandidateAdd):
-    ok, msg = tracker.add_job(candidate.__dict__)
-    if not ok:
-        return {"ok": False, "error": msg}
-    return {"ok": True}
+    try:
+        ok, msg = tracker.add_job(candidate.__dict__)
+        if not ok:
+            return {"ok": False, "error": msg}
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.delete("/api/jobs/{notion_id}")
 def delete_job(notion_id: str):
-    identifier = unquote(notion_id)
-    ok, msg = tracker.remove_job(identifier)
-    if not ok:
-        return {"ok": False, "error": msg}
-    return {"ok": True}
+    try:
+        identifier = unquote(notion_id)
+        ok, msg = tracker.remove_job(identifier)
+        if not ok:
+            return {"ok": False, "error": msg}
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
