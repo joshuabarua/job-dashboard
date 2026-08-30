@@ -428,7 +428,7 @@ def collect(track=None):
                     }
                     candidates.append(cand)
                     break  # first matching track wins
-        except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
+        except Exception as e:
             print(f"[search] source failed: {e}", file=sys.stderr)
     # drop duplicates against tracker CSV
     final = []
