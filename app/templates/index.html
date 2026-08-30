@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Search / Command Center</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body>
+<div x-data="cmd()" x-init="init()" class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" x-show="!mobileOpen" x-transition.opacity
+         :class="{'closed': !mobileOpen}">
+    <div class="brand">
+      <div class="brand-mark">&#9679;</div>
+      <div class="brand-text">
+        <div class="brand-title">JOB SEARCH</div>
+        <div class="brand-sub">COMMAND CENTER <span x-text="version"></span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head" @click="statusAll = true; track = null; q=''; loc=''">
+        <span>PIPELINE</span>
+        <span class="count" x-text="totalAll"></span>
+      </div>
+      <button class="pipeline-item"
+              :class="{'active': statusAll && !track && !q}"
+              @click="statusAll = true; track = null; q=''; loc=''; fetchAll()">
+        <span class="dot dot-all"></span><span>All tracks</span><span class="count" x-text="totalAll"></span>
+      </button>
+      <template x-for="stage in pipeline" :key="stage.status">
+        <button class="pipeline-item"
+                :class="{'active': !statusAll && !track && selStatus === stage.status}"
+                @click="statusAll=false; track=null; selStatus=stage.status; q=''; loc=''; fetchAll()">
+          <span class="dot" :class="'dot-'+stage.key"></span>
+          <span x-text="stage.status"></span>
+          <span class="count" x-text="stage.count"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head"><span>TRACKS</span></div>
+      <template x-for="t in tracks" :key="t.track">
+        <button class="pipeline-item"
+                :class="{'active': track === t.track}"
+                @click="track = (track === t.track ? null : t.track); selStatus=null; statusAll=true; fetchAll()">
+          <span class="dot" :class="'dot-'+t.color"></span>
+          <span x-text="t.track"></span>
+          <span class="count" x-text="t.count"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head"><span>FILTERS</span></div>
+      <label class="field">
+        <span class="field-label">Location</span>
+        <select x-model="loc" @change="fetchAll()">
+          <option value="">All locations</option>
+          <template x-for="l in locations" :key="l.location">
+            <option :value="l.location" x-text="l.location + ' (' + l.count + ')'"></option>
+          </template>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">Sort</span>
+        <select x-model="sort" @change="fetchAll()">
+          <option value="date">Newest first</option>
+          <option value="score">Highest score</option>
+        </select>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" x-model="showDupes" @change="fetchAll()">
+        <span>Show duplicate entries</span>
+      </label>
+    </div>
+
+    <div class="sidebar-foot">
+      <button class="ghost" @click="openOverrides()">Status overrides</button>
+      <span class="muted" x-text="updatedAt"></span>
+    </div>
+  </aside>
+
+  <!-- MOBILE TOGGLE -->
+  <button class="menu-btn" @click="mobileOpen = !mobileOpen">&#9776;</button>
+
+  <!-- MAIN -->
+  <main class="main" :class="{'shifted': mobileOpen}">
+    <header class="topbar">
+      <div class="search-wrap">
+        <input type="search" x-model="q" placeholder="Search title, company, location..."
+               @input.debounce.300ms="fetchAll()">
+        <span class="search-glyph">&#128269;</span>
+      </div>
+      <button class="search-btn" @click="runSearch()" :disabled="searching">&#128269; <span x-text="searching ? 'SCANNING…' : 'SEARCH FOR JOBS'"></span></button>
+      <div class="topbar-stats">
+        <div class="stat" x-show="track"><span class="stat-label">TRACK</span><span class="stat-value" x-text="track"></span></div>
+        <div class="stat" x-show="selStatus && !statusAll"><span class="stat-label">STATUS</span><span class="stat-value" x-text="selStatus"></span></div>
+        <div class="stat"><span class="stat-label">VISIBLE</span><span class="stat-value" x-text="totalFiltered"></span></div>
+        <div class="stat"><span class="stat-label">UPDATED</span><span class="stat-value" x-text="updatedAt"></span></div>
+      </div>
+    </header>
+
+    <section class="cards" x-show="!loading">
+      <template x-for="job in jobs" :key="job._key">
+        <article class="card" :class="{'dupe': job._dup_flag}">
+          <div class="card-top">
+            <div class="pill" :class="'pill-'+job._track_color" x-text="job.track"></div>
+            <select class="status-select" :class="'sel-'+statusKey(job.status)"
+                    x-model="job.status" @change="setStatus(job)">
+              <template x-for="s in statuses" :key="s">
+                <option :value="s" x-text="s"></option>
+              </template>
+            </select>
+            <button class="ghost small" @click="removeJob(job)">remove</button>
+          </div>
+          <a :href="job.url" target="_blank" rel="noopener" class="card-title" x-text="job.job_title"></a>
+          <div class="card-sub" x-text="job.company"></div>
+          <div class="card-meta">
+            <span class="meta" x-text="job.location"></span>
+            <span class="meta" x-show="job.date" x-text="job.date ? new Date(job.date).toLocaleDateString('en-GB') : ''"></span>
+            <span class="meta score" x-show="job.match_score !== ''">score <b x-text="job.match_score"></b></span>
+          </div>
+          <div class="card-flags">
+            <span class="flag" x-show="job._dup_flag">DUPLICATE</span>
+            <span class="flag" x-show="job.status !== 'New'">&#10003; <span x-text="job.status"></span></span>
+          </div>
+        </article>
+      </template>
+      <div class="empty" x-show="jobs.length === 0">
+        <div class="empty-icon">&#9632;</div>
+        <div>No jobs match the current filters</div>
+        <button class="ghost" @click="reset()">Reset filters</button>
+      </div>
+    </section>
+
+    <section class="loading" x-show="loading">SCANNING&hellip;</section>
+  </main>
+
+  <!-- OVERRIDES DRAWER -->
+  <div class="drawer-scrim" x-show="drawer" @click="drawer = false" x-transition.opacity></div>
+  <aside class="drawer" x-show="drawer" x-transition>
+    <div class="drawer-head"><span>STATUS OVERRIDES</span><button class="ghost" @click="drawer=false">CLOSE</button></div>
+    <p class="muted small">Manual status changes persist in <code>app/overrides.json</code> and take precedence over the CSV (which is never written by the dashboard).</p>
+    <div class="override-list">
+      <template x-for="(v, k) in overrides" :key="k">
+        <div class="override-row">
+          <code class="oid" x-text="k"></code>
+          <select class="status-select" x-model="overrides[k]" @change="setStatusFromOverride(k, overrides[k])">
+            <template x-for="s in statuses" :key="s"><option :value="s" x-text="s"></option></template>
+          </select>
+          <button class="ghost small" @click="clearOverride(k)">x</button>
+        </div>
+      </template>
+      <div class="muted small" x-show="Object.keys(overrides || {}).length === 0">No overrides yet.</div>
+    </div>
+  </aside>
+
+  <!-- SEARCH DRAWER -->
+  <div class="drawer-scrim" x-show="searchOpen" @click="searchOpen = false" x-transition.opacity></div>
+  <aside class="drawer search-drawer" x-show="searchOpen" x-transition>
+    <div class="drawer-head">
+      <span>NEW CANDIDATES</span>
+      <button class="ghost" @click="searchOpen=false">CLOSE</button>
+    </div>
+    <p class="muted small" x-show="!searching && candidates.length === 0 && !searchError">
+      No results yet. Hit SEARCH FOR JOBS to scan arbeitnow + remotive using the heartbeat reject rules.
+    </p>
+    <p class="muted small" x-show="searching">Scanning job boards&hellip;</p>
+    <p class="err" x-show="searchError" x-text="searchError"></p>
+    <div class="override-list">
+      <template x-for="c in candidates" :key="c.url">
+        <div class="candidate" :class="{'dupe': c._dup_flag}">
+          <div class="cand-top">
+            <span class="pill" :class="'pill-' + colorFor(c.track)" x-text="c.track"></span>
+            <span class="cand-score" x-show="c.match_score">score <b x-text="c.match_score"></b></span>
+            <span class="flag dupe-flag" x-show="c._dup_flag">DUPLICATE IN TRACKER</span>
+          </div>
+          <a :href="c.url" target="_blank" rel="noopener" class="card-title" x-text="c.job_title"></a>
+          <div class="card-sub" x-text="c.company"></div>
+          <div class="card-meta">
+            <span class="meta" x-text="c.location"></span>
+            <span class="meta" x-text="c.recommended_cv"></span>
+          </div>
+          <div class="cand-why muted small" x-text="c.why_fit"></div>
+          <button class="add-btn" :disabled="c._dup_flag" @click="addCandidate(c)">&#43; ADD TO TRACKER</button>
+        </div>
+      </template>
+    </div>
+  </aside>
+</div>
+
+<script>
+function cmd() {
+  return {
+    version: "v1.0",
+    tracks: [], locations: [], pipeline: [], statuses: [],
+    jobs: [],
+    overrides: {},
+    // filters
+    track: null, selStatus: null, statusAll: true, loc: "", q: "", showDupes: true, sort: "date",
+    // ui
+    loading: true, drawer: false, mobileOpen: false,
+    searchOpen: false, searching: false, candidates: [], searchError: "",
+    totalAll: 0, totalFiltered: 0, updatedAt: "", _tid: null,
+
+    async init() {
+      const [meta, stats] = await Promise.all([
+        fetch("/api/meta").then(r => r.json()),
+        fetch("/api/stats").then(r => r.json()),
+      ]);
+      this.statuses = meta.workflow;
+      this.trackColors = meta.track_colors;
+      this.buildTracks(stats);
+      this.locations = stats.locations;
+      this.pipeline = stats.pipeline.map(p => ({
+        ...p,
+        key: p.status.toLowerCase().replace(/[^a-z]+/g, '-'),
+      }));
+      this.totalAll = stats.total;
+      this.updatedAt = new Date().toLocaleTimeString('en-GB');
+      await this.fetchAll();
+    },
+
+    buildTracks(stats) {
+      this.tracks = [];
+      for (const t of stats.tracks) {
+        const color = (this.trackColors && this.trackColors[t.track]) || 'accent';
+        this.tracks.push({ track: t.track, count: t.count, color });
+      }
+    },
+
+    async fetchAll() {
+      const params = new URLSearchParams({ show_dupes: this.showDupes ? 'true' : 'false' });
+      if (this.track) params.set("track", this.track);
+      if (this.selStatus && !this.statusAll) params.set("status", this.selStatus);
+      if (this.loc) params.set("location", this.loc);
+      if (this.q.trim()) params.set("q", this.q.trim());
+      if (this.sort !== 'date') params.set("sort", this.sort);
+
+      this.loading = true;
+      clearTimeout(this._tid);
+      const [jobs, stats] = await Promise.all([
+        fetch("/api/jobs?" + params).then(r => r.json()),
+        fetch("/api/stats?" + params).then(r => r.json()),
+      ]);
+      this.jobs = jobs;
+      this.totalFiltered = stats.total;
+      this.buildTracks(stats);
+      this.locations = stats.locations;
+      this.pipeline = stats.pipeline.map(p => ({
+        ...p, key: p.status.toLowerCase().replace(/[^a-z]+/g, '-'),
+      }));
+      this.totalAll = stats.total;
+      this.updatedAt = new Date().toLocaleTimeString('en-GB');
+      this._tid = setTimeout(() => { this.loading = false; }, 60);
+    },
+
+    statusKey(s) {
+      return "new applied reviewed interview offer declined".split(" ")
+        .indexOf((s || "New").toLowerCase());
+    },
+
+    async setStatus(job) {
+      const id = job.notion_id || job.url || job._key;
+      const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: job.status }),
+      });
+      const res = await r.json();
+      if (res.ok) await this.fetchAll();
+      else { alert(res.error); await this.fetchAll(); }
+    },
+async removeJob(job) {
+      if (!confirm('Remove this job?')) return;
+      const id = job.notion_id || job.url || job._key;
+      try {
+        const r = await fetch(`/api/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const res = await r.json();
+        if (!res.ok) throw new Error(res.error || "remove failed");
+        await this.fetchAll();
+      } catch (e) {
+        alert(e.message);
+      }
+    },
+
+    async setStatusFromOverride(key, value) {
+      const r = await fetch(`/api/jobs/${key}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: value }),
+      });
+      const res = await r.json();
+      if (res.ok) await this.fetchAll();
+      else { this.overrides[key] = "New"; alert(res.error); }
+    },
+
+    async clearOverride(key) {
+      await fetch(`/api/jobs/${key}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "New" }),
+      });
+      delete this.overrides[key];
+      await this.fetchAll();
+    },
+
+    openOverrides() {
+      this.drawer = true;
+    },
+
+    reset() {
+      this.track = null; this.selStatus = null; this.statusAll = true;
+      this.loc = ""; this.q = ""; this.showDupes = true;
+      this.fetchAll();
+    },
+
+    colorFor(t) {
+      return (this.trackColors && this.trackColors[t]) || 'accent';
+    },
+
+    async runSearch() {
+      this.searching = true;
+      this.searchError = "";
+      this.searchOpen = true;
+      try {
+        const r = await fetch("/api/search?track=" + encodeURIComponent(this.track || ""));
+        const res = await r.json();
+        if (!res.ok) throw new Error(res.error || "search failed");
+        this.candidates = res.candidates.filter(c => !c._dup_flag);
+      } catch (e) {
+        this.searchError = e.message;
+      } finally {
+        this.searching = false;
+      }
+    },
+
+    async addCandidate(c) {
+      const body = {
+        job_title: c.job_title, company: c.company, location: c.location,
+        url: c.url, track: c.track, match_score: String(c.match_score || ""),
+        recommended_cv: c.recommended_cv, why_fit: c.why_fit,
+        application_strategy: c.application_strategy,
+        date: new Date().toISOString().slice(0, 10),
+      };
+      const r = await fetch("/api/jobs/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const res = await r.json();
+      if (res.ok) {
+        c._dup_flag = true;
+        await this.fetchAll();
+      } else {
+        c._dup_flag = true;
+        alert(res.error);
+      }
+    },
+  };
+}
+</script>
+</body>
+</html>

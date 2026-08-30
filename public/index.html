@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Search / Command Center</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body>
+<div x-data="cmd()" x-init="init()" class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">&#9679;</div>
+      <div class="brand-text">
+        <div class="brand-title">JOB SEARCH</div>
+        <div class="brand-sub">COMMAND CENTER <span x-text="version"></span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head"><span>PIPELINE</span><span class="count" x-text="total"></span></div>
+      <button class="pipeline-item" :class="{'active': statusAll && !track && !q}" @click="statusAll=true; track=null; selStatus=null; q=''; loc=''; update()">
+        <span class="dot dot-all"></span><span>All tracks</span><span class="count" x-text="total"></span>
+      </button>
+      <template x-for="p in pipeline" :key="p.status">
+        <button class="pipeline-item" :class="{'active': !statusAll && selStatus === p.status}" @click="statusAll=false; selStatus=p.status; track=null; q=''; loc=''; update()">
+          <span class="dot" :class="'dot-'+p.key"></span><span x-text="p.status"></span><span class="count" x-text="p.count"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head"><span>TRACKS</span></div>
+      <template x-for="t in tracks" :key="t.track">
+        <button class="pipeline-item" :class="{'active': track === t.track}" @click="track = (track === t.track ? null : t.track); statusAll=true; selStatus=null; update()">
+          <span class="dot" :class="'dot-'+t.color"></span><span x-text="t.track"></span><span class="count" x-text="t.count"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head"><span>FILTERS</span></div>
+      <label class="field">
+        <span class="field-label">Location</span>
+        <select x-model="loc" @change="update()">
+          <option value="">All locations</option>
+          <template x-for="l in locations" :key="l.location">
+            <option :value="l.location" x-text="l.location + ' (' + l.count + ')'"></option>
+          </template>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">Sort</span>
+        <select x-model="sort" @change="update()">
+          <option value="date">Newest first</option>
+          <option value="score">Highest score</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="sidebar-foot">
+      <span class="muted">Static site &middot; Updated by Actions</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="search-wrap">
+        <input type="search" x-model="q" placeholder="Search title, company, location..." @input.debounce.300ms="update()">
+        <span class="search-glyph">&#128269;</span>
+      </div>
+      <div class="topbar-stats">
+        <div class="stat"><span class="stat-label">VISIBLE</span><span class="stat-value" x-text="visible.length"></span></div>
+      </div>
+    </header>
+
+    <section class="loading" x-show="loading">SCANNING&hellip;</section>
+
+    <section class="cards" x-show="!loading">
+      <template x-for="job in visible" :key="job._key">
+        <article class="card" :class="{'dupe': job._dup_flag}">
+          <div class="card-top">
+            <div class="pill" :class="'pill-'+job._track_color" x-text="job.track"></div>
+          </div>
+          <a :href="job.url" target="_blank" rel="noopener" class="card-title" x-text="job.job_title"></a>
+          <div class="card-sub" x-text="job.company"></div>
+          <div class="card-meta">
+            <span class="meta" x-text="job.location"></span>
+            <span class="meta" x-show="job.date" x-text="job.date ? new Date(job.date).toLocaleDateString('en-GB') : ''"></span>
+            <span class="meta score" x-show="job.match_score !== ''">score <b x-text="job.match_score"></b></span>
+          </div>
+          <div class="card-flags">
+            <span class="flag" x-show="job._dup_flag">DUPLICATE</span>
+            <span class="flag" x-show="job.status !== 'New'">&#10003; <span x-text="job.status"></span></span>
+          </div>
+        </article>
+      </template>
+      <div class="empty" x-show="visible.length === 0">
+        <div class="empty-icon">&#9632;</div>
+        <span>No jobs match these filters.</span>
+      </div>
+    </section>
+  </main>
+
+</div>
+
+<script>
+function cmd() {
+  return {
+    version: "v1.0",
+    tracks: [], locations: [], pipeline: [], statuses: [],
+    jobs: [], visible: [],
+    track: null, selStatus: null, statusAll: true, loc: "", q: "", sort: "date",
+    total: 0, loading: true,
+    trackColors: {},
+
+    async init() {
+      const [meta, stats, jobs] = await Promise.all([
+        fetch("meta.json").then(r => r.json()),
+        fetch("stats.json").then(r => r.json()),
+        fetch("jobs.json").then(r => r.json()),
+      ]);
+      this.trackColors = meta.track_colors;
+      this.statuses = meta.workflow;
+      this.tracks = stats.tracks.map(t => ({...t, color: this.trackColors[t.track] || 'accent'}));
+      this.locations = stats.locations;
+      this.pipeline = stats.pipeline.map(p => ({
+        ...p,
+        key: p.status.toLowerCase().replace(/[^a-z]+/g, '-'),
+      }));
+      this.total = stats.total;
+      this.jobs = jobs;
+      this.loading = false;
+      this.update();
+    },
+
+    update() {
+      let out = this.jobs.filter(j => {
+        if (this.track && j.track !== this.track) return false;
+        if (!this.statusAll && this.selStatus && j.status !== this.selStatus) return false;
+        if (this.loc && j.location !== this.loc) return false;
+        if (this.q.trim()) {
+          const hay = (j.job_title + " " + j.company + " " + j.location + " " + j.track).toLowerCase();
+          if (!hay.includes(this.q.trim().toLowerCase())) return false;
+        }
+        return true;
+      });
+      if (this.sort === "score") {
+        out.sort((a, b) => (parseFloat(b.match_score) || 0) - (parseFloat(a.match_score) || 0));
+      } else {
+        out.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      }
+      this.visible = out;
+    },
+  };
+}
+</script>
+</body>
+</html>
