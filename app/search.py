@@ -138,6 +138,7 @@ REJECT_HOSTS = {"linkedin.com"}
 REJECT_URL_PATTERNS = [
     re.compile(p, re.I) for p in [
         r"glassdoor\.com/Job/.*-jobs-SRCH",
+        r"glassdoor\.(com|co\.uk)/Salaries/",
         r"indeed\.com/q-.*-jobs\.html",
         r"indeed\.com/q-.*-l-.*-jobs\.html",
         r"stepstone\.de/jobs/.*/in-berlin",
