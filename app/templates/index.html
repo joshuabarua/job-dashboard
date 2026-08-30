@@ -123,6 +123,7 @@
                 <option :value="s" x-text="s"></option>
               </template>
             </select>
+            <button class="ghost small" @click="markApplied(job)">applied</button>
             <button class="ghost small" @click="removeJob(job)">remove</button>
           </div>
           <a :href="job.url" target="_blank" rel="noopener" class="card-title" x-text="job.job_title"></a>
@@ -276,18 +277,24 @@ function cmd() {
         .indexOf((s || "New").toLowerCase());
     },
 
-    async setStatus(job) {
+    async setStatus(job, newStatus = null) {
+      const status = newStatus || job.status;
       const id = job.notion_id || job.url || job._key;
       const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: job.status }),
+        body: JSON.stringify({ status }),
       });
       const res = await r.json();
       if (res.ok) await this.fetchAll();
       else { alert(res.error); await this.fetchAll(); }
     },
-async removeJob(job) {
+    async markApplied(job) {
+      job.status = "Applied";
+      await this.setStatus(job, "Applied");
+    },
+
+    async removeJob(job) {
       if (!confirm('Remove this job?')) return;
       const id = job.notion_id || job.url || job._key;
       try {
