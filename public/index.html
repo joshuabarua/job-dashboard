@@ -100,7 +100,7 @@
           <div class="card-meta">
             <span class="meta" x-text="job.location"></span>
             <span class="meta" x-show="job.date" x-text="job.date ? new Date(job.date).toLocaleDateString('en-GB') : ''"></span>
-            <span class="meta score" x-show="job.match_score !== ''">score <b x-text="job.match_score"></b></span>
+            <span class="meta score" x-show="job.match_score !== ''" title="Match score 0–10: keyword fit, remote, and location bonuses">score <b x-text="job.match_score"></b></span>
           </div>
           <div class="card-flags">
             <span class="flag" x-show="job._dup_flag">DUPLICATE</span>

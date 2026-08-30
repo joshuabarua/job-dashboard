@@ -164,6 +164,7 @@ def get_jobs():
         j.setdefault("status", "New")
         j.setdefault("date", "")
         j.setdefault("match_score", "")
+        j["match_score"] = _norm_score(j.get("match_score"))
         j["location"] = _normalize_location(j.get("location"))
         oid = j.get("notion_id", "").strip()
         key = oid if oid else j.get("url", "").strip()
@@ -250,6 +251,16 @@ def _normalize_title(title):
     t = re.sub(r"\(m/w/d\)|\(f/m/d\)|\(x/w/m\)|\(w/m/d\)", "", title, flags=re.IGNORECASE)
     t = re.sub(r"/\s*-?\s*in\b", "", t, flags=re.IGNORECASE)
     return t.strip().lower()
+
+
+def _norm_score(value):
+    try:
+        v = float(value)
+    except (ValueError, TypeError):
+        return value or ""
+    if v > 10:
+        v = round(v / 10, 1)
+    return str(min(10.0, v))
 
 
 def _normalize_location(loc):
