@@ -61,6 +61,14 @@
           <option value="score">Highest score</option>
         </select>
       </label>
+      <label class="toggle">
+        <input type="checkbox" x-model="showDupes" @change="update()">
+        <span>Show duplicates</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" x-model="showApplied" @change="update()">
+        <span>Show applied</span>
+      </label>
     </div>
 
     <div class="sidebar-foot">
@@ -115,7 +123,7 @@ function cmd() {
     version: "v1.0",
     tracks: [], locations: [], pipeline: [], statuses: [],
     jobs: [], visible: [],
-    track: null, selStatus: null, statusAll: true, loc: "", q: "", sort: "date",
+    track: null, selStatus: null, statusAll: true, loc: "", q: "", showDupes: false, showApplied: false, sort: "date",
     total: 0, loading: true,
     trackColors: {},
 
@@ -143,6 +151,8 @@ function cmd() {
       let out = this.jobs.filter(j => {
         if (this.track && j.track !== this.track) return false;
         if (!this.statusAll && this.selStatus && j.status !== this.selStatus) return false;
+        if (!this.showApplied && this.statusAll && j.status === "Applied") return false;
+        if (!this.showDupes && j._dup_flag) return false;
         if (this.loc && j.location !== this.loc) return false;
         if (this.q.trim()) {
           const hay = (j.job_title + " " + j.company + " " + j.location + " " + j.track).toLowerCase();

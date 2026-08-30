@@ -78,7 +78,11 @@
       </label>
       <label class="toggle">
         <input type="checkbox" x-model="showDupes" @change="fetchAll()">
-        <span>Show duplicate entries</span>
+        <span>Show duplicates</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" x-model="showApplied" @change="fetchAll()">
+        <span>Show applied</span>
       </label>
     </div>
 
@@ -205,7 +209,7 @@ function cmd() {
     jobs: [],
     overrides: {},
     // filters
-    track: null, selStatus: null, statusAll: true, loc: "", q: "", showDupes: true, sort: "date",
+    track: null, selStatus: null, statusAll: true, loc: "", q: "", showDupes: false, showApplied: false, sort: "date",
     // ui
     loading: true, drawer: false, mobileOpen: false,
     searchOpen: false, searching: false, candidates: [], searchError: "",
@@ -241,6 +245,7 @@ function cmd() {
       const params = new URLSearchParams({ show_dupes: this.showDupes ? 'true' : 'false' });
       if (this.track) params.set("track", this.track);
       if (this.selStatus && !this.statusAll) params.set("status", this.selStatus);
+      if (!this.showApplied && this.statusAll) params.set("exclude_status", "Applied");
       if (this.loc) params.set("location", this.loc);
       if (this.q.trim()) params.set("q", this.q.trim());
       if (this.sort !== 'date') params.set("sort", this.sort);

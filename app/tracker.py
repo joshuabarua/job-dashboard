@@ -198,13 +198,15 @@ def set_status(identifier, status):
     return True, "ok"
 
 
-def apply_filters(jobs, track=None, status=None, location=None, query=None):
+def apply_filters(jobs, track=None, status=None, exclude_status=None, location=None, query=None):
     query = (query or "").strip().lower()
     out = []
     for j in jobs:
         if track and j.get("track", "").strip() != track:
             continue
         if status and j.get("status", "").strip() != status:
+            continue
+        if exclude_status and j.get("status", "").strip() == exclude_status:
             continue
         if location and j.get("location", "").strip() != location:
             continue

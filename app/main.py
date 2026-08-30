@@ -50,6 +50,7 @@ def favicon():
 def list_jobs(
     track: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    exclude_status: str | None = Query(default=None),
     location: str | None = Query(default=None),
     q: str | None = Query(default=None),
     show_dupes: bool = Query(default=True),
@@ -57,7 +58,7 @@ def list_jobs(
 ):
     jobs = tracker.get_jobs()
     jobs = tracker.dedup_status(jobs)
-    jobs = tracker.apply_filters(jobs, track=track, status=status, location=location, query=q)
+    jobs = tracker.apply_filters(jobs, track=track, status=status, exclude_status=exclude_status, location=location, query=q)
     if not show_dupes:
         jobs = [j for j in jobs if not j["_dup_flag"]]
     jobs = tracker.sort_jobs(jobs, sort_by=sort)
@@ -68,11 +69,12 @@ def list_jobs(
 def stats(
     track: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    exclude_status: str | None = Query(default=None),
     location: str | None = Query(default=None),
     q: str | None = Query(default=None),
 ):
     jobs = tracker.get_jobs()
-    jobs = tracker.apply_filters(jobs, track=track, status=status, location=location, query=q)
+    jobs = tracker.apply_filters(jobs, track=track, status=status, exclude_status=exclude_status, location=location, query=q)
     return {
         "total": len(jobs),
         "pipeline": tracker.pipeline(jobs),
