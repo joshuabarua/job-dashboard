@@ -392,7 +392,7 @@ def collect(track=None):
         tracks = [track]
         # remotive only serves remote gigs; restrict sources for on-site tracks
         if track in TRACKS and not TRACKS[track].get("remote"):
-            sources = [_fetch_arbeitnow]
+            sources = [_fetch_arbeitnow, _fetch_html_boards]
     else:
         tracks = list(TRACKS)
 
