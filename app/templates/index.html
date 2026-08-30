@@ -252,12 +252,15 @@ function cmd() {
 
       this.loading = true;
       clearTimeout(this._tid);
+      const statsParams = new URLSearchParams(params);
+      statsParams.delete("status");
+      statsParams.delete("sort");
       const [jobs, stats] = await Promise.all([
         fetch("/api/jobs?" + params).then(r => r.json()),
-        fetch("/api/stats?" + params).then(r => r.json()),
+        fetch("/api/stats?" + statsParams).then(r => r.json()),
       ]);
       this.jobs = jobs;
-      this.totalFiltered = stats.total;
+      this.totalFiltered = jobs.length;
       this.buildTracks(stats);
       this.locations = stats.locations;
       this.pipeline = stats.pipeline.map(p => ({
