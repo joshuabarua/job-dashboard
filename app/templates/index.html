@@ -123,6 +123,7 @@
                 <option :value="s" x-text="s"></option>
               </template>
             </select>
+            <button class="ghost small" @click="markStarred(job)">&#9733;</button>
             <button class="ghost small" @click="markApplied(job)">applied</button>
             <button class="ghost small" @click="removeJob(job)">remove</button>
           </div>
@@ -273,7 +274,7 @@ function cmd() {
     },
 
     statusKey(s) {
-      return "new applied reviewed interview offer declined".split(" ")
+      return "new applied reviewed interview offer declined starred".split(" ")
         .indexOf((s || "New").toLowerCase());
     },
 
@@ -292,6 +293,10 @@ function cmd() {
     async markApplied(job) {
       job.status = "Applied";
       await this.setStatus(job, "Applied");
+    },
+    async markStarred(job) {
+      job.status = "Starred";
+      await this.setStatus(job, "Starred");
     },
 
     async removeJob(job) {

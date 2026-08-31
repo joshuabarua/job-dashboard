@@ -19,7 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent
 CSV_FILE = Path(os.environ.get("JOBS_TRACKER_CSV", r"C:\Users\Josh\job-dashboard\jobs_tracker.csv"))
 OVERRIDES_FILE = BASE_DIR / "overrides.json"
 
-WORKFLOW = ["New", "Applied", "Reviewed", "Interview", "Offer", "Declined"]
+WORKFLOW = ["New", "Applied", "Reviewed", "Interview", "Offer", "Declined", "Starred"]
 
 TRACKS = [
     "Developer",
