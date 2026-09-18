@@ -6,13 +6,15 @@ matches, and marks duplicates against the CSV tracker.
 """
 
 import json
+import os
 import re
 import sys
 import urllib.error
 import urllib.request
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from . import tracker
+from . import websearch
 
 try:
     import requests
@@ -27,7 +29,8 @@ TRACKS = {
             "frontend engineer", "frontend developer", "front-end engineer",
             "front-end developer", "frontend", "front-end", "react engineer",
             "react developer", "typescript", "react", "vue", "next.js",
-            "nextjs", "tailwind",
+            "nextjs", "tailwind", "react native", "react-native", "expo",
+            "zustand", "remix", "svelte", "tanstack", "redux",
         ],
         "remote": True,
         "location": "Berlin (hybrid)/Remote",
@@ -82,7 +85,9 @@ TRACKS = {
         "keywords": [
             "software engineer", "software developer", "fullstack",
             "full-stack", "node.js", "nodejs", "javascript", "web developer",
-            "backend", "back-end", "backend engineer",
+            "backend", "back-end", "backend engineer", "typescript",
+            "react", "trpc", "hono", "graphql", "prisma", "express",
+            "nest.js", "nestjs", "node",
         ],
         "remote": True,
         "location": "Berlin (hybrid)/Remote",
@@ -241,29 +246,15 @@ def _fetch_remotive():
 # --- Additional HTML boards (user-provided) --------------------------------
 
 ADDITIONAL_BOARDS = [
-    ("JobWorld EU Berlin", "https://www.jobworld.de/eu-jobs-berlin", False),
+    ("Reed UK", "https://www.reed.co.uk/jobs/developer-jobs?q=developer", True),
     ("ImpactPool Germany", "https://www.impactpool.org/countries/Germany", False),
     ("EnglishJobs Berlin", "https://englishjobs.de/in/berlin", False),
-    ("Berlin Startup Jobs", "https://berlinstartupjobs.com/", False),
-    ("UN Jobs Berlin", "https://unjobs.org/duty_stations/ber", True),
-    ("EU Training Jobs", "https://eutraining.eu/jobs/vacancies", True),
-    ("EURES Search", "https://europa.eu/eures/portal/jv-se/search?page=1&resultsPerPage=10&orderBy=BEST_MATCH&locationCodes=de&lang=en", True),
     ("Stepstone EU Berlin", "https://www.stepstone.de/jobs/europ%C3%A4ische-union/in-berlin", False),
-    ("EU Careers", "https://eu-careers.europa.eu/en/job-opportunities/open-vacancies", True),
-    ("EuroJobs", "https://www.eurojobs.com/", True),
-    ("EuroBrussels", "https://www.eurobrussels.com/", True),
-    ("Europass Jobs", "https://europass.europa.eu/en/find-jobs", True),
-    ("EURES Portal", "https://eures.europa.eu/index_en", True),
-    ("GOV.UK Find a Job", "https://www.jobs.service.gov.uk/jobs/search?keywords=developer&locationId=&location=", True),
-    ("Jobs.ac.uk", "https://www.jobs.ac.uk/search/?keywords=developer&location=", True),
-    ("Totaljobs", "https://www.totaljobs.com/onboarding?onboardingSource=hp-redirect", True),
-    ("Reed UK", "https://www.reed.co.uk/jobs/developer-jobs?q=developer", True),
-    ("Glassdoor UK", "https://www.glassdoor.co.uk/Job/united-kingdom-web-developer-jobs-SRCH_IL.0,14_IN2_KO15,28.htm", True),
-    ("The Guardian Jobs", "https://jobs.theguardian.com/jobs/?Keywords=web+developer#browsing", True),
-    ("Jobsite UK", "https://www.jobsite.co.uk/", True),
-    ("Jobs.co.uk", "https://jobs.co.uk/jobs-results?Keyword=web+developer&Location=&RadiusMiles=10", True),
-    ("Home Office Careers", "https://careers.homeoffice.gov.uk/search-jobs/?keyword=developer&loc_text=&loc=&lat=&lon=&grade=", True),
-    ("Michael Page UK", "https://www.michaelpage.co.uk/jobs/developer", True),
+]
+
+# Listing pages always mined by the extract stage on metered runs (url, remote).
+EXTRACT_SEEDS = [
+    ("https://berlinstartupjobs.com/engineering/", False),
 ]
 
 
@@ -302,6 +293,54 @@ def _fetch_html_boards():
                 }
         except Exception as e:
             print(f"[search] {name} failed: {e}", file=sys.stderr)
+
+
+# --- Web search (metered providers; WEBSEARCH_ENABLED gated) ---------------
+
+def _domain_label(url):
+    """Best-effort company label from a result URL's registrable domain."""
+    host = urlparse(url or "").netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    host = host.split(":", 1)[0]
+    parts = [p for p in host.split(".") if p]
+    if len(parts) >= 3 and len(parts[-1]) == 2 and parts[-2] in (
+            "co", "com", "org", "net", "ac", "gov"):
+        return parts[-3]
+    if len(parts) >= 2:
+        return parts[-2]
+    return host or "web"
+
+
+def _fetch_websearch():
+    """Metered multi-provider web search; one query per track."""
+    if websearch.requests is None:
+        print("[search] requests not installed; skipping web search", file=sys.stderr)
+        return
+    for cfg in TRACKS.values():
+        keyword = cfg["keywords"][0]
+        if cfg["remote"]:
+            query = f"{keyword} remote jobs"
+        else:
+            query = f"{keyword} jobs Berlin"
+        try:
+            results = websearch.search(query, limit=10)
+        except Exception as e:
+            print(f"[search] websearch failed ({query}): {e}", file=sys.stderr)
+            continue
+        for r in results:
+            yield {
+                "job_title": r["title"],
+                "company": _domain_label(r["url"]),
+                "location": "Remote" if cfg["remote"] else "Berlin",
+                "url": r["url"],
+                "tags": [r["snippet"]] if r.get("snippet") else [],
+                "remote": cfg["remote"],
+            }
+
+
+def _websearch_enabled():
+    return (os.environ.get("WEBSEARCH_ENABLED") or "").strip().lower() in ("1", "true", "yes")
 
 
 # --- Scoring / filtering ---------------------------------------------------
@@ -385,6 +424,104 @@ def _strategy(track_cfg):
     return f"Direct apply via link with {track_cfg['cv']}"
 
 
+# --- Extract stage: mine job links out of listing pages --------------------
+
+_LISTING_REASONS = {"Aggregator listing page", "Multi-job listing"}
+
+
+def _page_host(url):
+    host = urlparse(url or "").netloc.lower().split(":", 1)[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _mined_candidate(link, tracks, seen_urls):
+    """Run a mined link through the same pipeline as any source job."""
+    url = (link.get("url") or "").strip()
+    if not url or url in seen_urls:
+        return None
+    seen_urls.add(url)
+    base = {
+        "job_title": link.get("title", ""),
+        "company": _domain_label(url),
+        "location": "",
+        "url": url,
+        "tags": [],
+        "remote": False,
+    }
+    if _rejected(base):
+        return None
+    for t in tracks:
+        cfg = TRACKS[t]
+        job = dict(base, location="Remote" if cfg["remote"] else "Berlin",
+                   remote=cfg["remote"])
+        if not _location_ok(job, cfg):
+            continue
+        hits = _matches(job, cfg)
+        if not hits:
+            continue
+        return {
+            "job_title": job["job_title"],
+            "company": job["company"],
+            "location": job["location"],
+            "url": url,
+            "track": t,
+            "match_score": _score(hits, job, cfg),
+            "why_fit": _why_fit(job, t, hits),
+            "application_strategy": _strategy(cfg),
+            "recommended_cv": cfg["cv"],
+            "_dup_flag": False,
+        }
+    return None
+
+
+def _extract_stage(listing_urls, tracks, seen_urls):
+    """Extract listing pages and mine jobs; bounded depth-2 facet hop.
+
+    Budget: EXTRACT_MAX_PAGES total extract calls (default 25) shared across
+    both depths, at most EXTRACT_MAX_PER_HOST pages per host (default 5).
+    """
+    max_pages = int(os.environ.get("EXTRACT_MAX_PAGES", "25"))
+    max_per_host = int(os.environ.get("EXTRACT_MAX_PER_HOST", "5"))
+    objective = "Extract the individual job posting titles and their links"
+    found = []
+    seen_pages = set()
+    host_counts = {}
+    pages = 0
+    queue = [u for u, _ in EXTRACT_SEEDS] + list(dict.fromkeys(listing_urls))
+    for depth in (1, 2):
+        seeds = []
+        for url in queue:
+            if pages >= max_pages:
+                break
+            host = _page_host(url)
+            if not host or url in seen_pages:
+                continue
+            if host_counts.get(host, 0) >= max_per_host:
+                continue
+            seen_pages.add(url)
+            host_counts[host] = host_counts.get(host, 0) + 1
+            pages += 1
+            try:
+                jobs, new_seeds = websearch._extract_mined(url, objective)
+            except Exception as e:
+                print(f"[search] extract failed for {url}: {e}", file=sys.stderr)
+                continue
+            if depth == 1:
+                seeds.extend(new_seeds)
+            for link in jobs:
+                cand = _mined_candidate(link, tracks, seen_urls)
+                if cand:
+                    found.append(cand)
+        if pages >= max_pages:
+            break
+        queue = seeds
+    if pages:
+        print(f"[search] extract stage used {pages} page(s)", file=sys.stderr)
+    return found
+
+
 def collect(track=None):
     """Search all sources, apply rules, return scored non-duplicate candidates."""
     candidates = []
@@ -396,8 +533,11 @@ def collect(track=None):
             sources = [_fetch_arbeitnow, _fetch_html_boards]
     else:
         tracks = list(TRACKS)
+    if _websearch_enabled():
+        sources.append(_fetch_websearch)
 
     seen_urls = set()
+    listing_urls = []
     for fetch in sources:
         try:
             for job in fetch():
@@ -405,7 +545,10 @@ def collect(track=None):
                 if not url or url in seen_urls:
                     continue
                 seen_urls.add(url)
-                if _rejected(job):
+                reason = _rejected(job)
+                if reason:
+                    if reason in _LISTING_REASONS:
+                        listing_urls.append(url)
                     continue
                 for t in tracks:
                     cfg = TRACKS[t]
@@ -430,6 +573,10 @@ def collect(track=None):
                     break  # first matching track wins
         except Exception as e:
             print(f"[search] source failed: {e}", file=sys.stderr)
+
+    if _websearch_enabled():
+        candidates.extend(_extract_stage(listing_urls, tracks, seen_urls))
+
     # drop duplicates against tracker CSV
     final = []
     for c in candidates:

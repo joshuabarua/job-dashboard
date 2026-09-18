@@ -8,13 +8,13 @@ Each track has a list of keywords, a preferred CV, and a location/remote prefere
 
 | Track | Keywords | Remote | Preferred CV | Notes |
 |---|---|---|---|---|
-| Frontend Engineer | `frontend`, `react`, `typescript`, `next.js`, `vue`, `tailwind` | Yes | Frontend CV | Web UI focused |
+| Frontend Engineer | `frontend`, `react`, `typescript`, `next.js`, `vue`, `tailwind`, `react native`, `expo`, `zustand`, `remix`, `svelte`, `tanstack`, `redux` | Yes | Frontend CV | Web UI focused |
 | Product Engineer | `product engineer`, `product developer` | Yes | Fullstack/Frontend CV | Product-led fullstack roles |
 | QA Automation Engineer | `qa automation`, `qa`, `automation`, `test engineer`, `sdet` | Yes | QA / Test Automation CV | Quality and test roles |
 | Junior / Associate Software Engineer | `junior`, `associate` + role keywords | Yes | Fullstack/Frontend CV | Entry-level / early-career roles |
 | Application Support Engineer | `application support` | No | Application Support CV | On-site Berlin |
 | Technical Support Engineer | `technical support`, `support engineer` | No | IT Support CV | On-site Berlin |
-| Developer | `software engineer`, `fullstack`, `javascript`, `nodejs`, `backend` | Yes | Fullstack/Frontend CV | Generalist fullstack/dev roles |
+| Developer | `software engineer`, `fullstack`, `javascript`, `typescript`, `react`, `nodejs`, `node`, `backend`, `trpc`, `hono`, `graphql`, `prisma`, `express`, `nestjs` | Yes | Fullstack/Frontend CV | Generalist fullstack/dev roles |
 | Sys Admin | `system administrator`, `sysadmin`, `it support`, `helpdesk`, `network` | No | IT Support CV | On-site Berlin |
 | Bouldering Gyms | `boulder`, `bouldering`, `climbing gym`, `klettern` | No | Bouldering Gym CV | On-site Berlin |
 | Bar / Hospitality | `bartender`, `waiter`, `barista`, `barkeeper`, `servicekraft` | No | Hospitality / Restaurant CV | On-site Berlin |
