@@ -256,11 +256,15 @@ def _fetch_remotive():
         }
 
 
+ARBEITSAGENTUR_KEY = os.environ.get("ARBEITSAGENTUR_API_KEY") or "jobboerse-jobsuche"
+
+
 def _fetch_arbeitsagentur():
-    """Bundesagentur für Arbeit Jobsuche API; dormant without ARBEITSAGENTUR_API_KEY."""
-    key = (os.environ.get("ARBEITSAGENTUR_API_KEY") or "").strip()
-    if not key:
-        return
+    """Bundesagentur für Arbeit Jobsuche API (v6).
+
+    The API uses a public static client id (X-API-Key: jobboerse-jobsuche),
+    documented on bund.dev — no registration or secret needed.
+    """
     if requests is None:
         print("[search] requests not installed; skipping arbeitsagentur", file=sys.stderr)
         return
@@ -273,8 +277,8 @@ def _fetch_arbeitsagentur():
     for kw in queries:
         try:
             resp = requests.get(
-                "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs",
-                headers={"X-API-Key": key},
+                "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs",
+                headers={"X-API-Key": ARBEITSAGENTUR_KEY},
                 params={"was": kw, "wo": "Berlin", "size": 25},
                 timeout=TIMEOUT)
             resp.raise_for_status()
@@ -282,25 +286,25 @@ def _fetch_arbeitsagentur():
         except Exception as e:
             print(f"[search] arbeitsagentur '{kw}' failed: {e}", file=sys.stderr)
             continue
-        items = data.get("stellenangebote") if isinstance(data, dict) else data
+        items = data.get("ergebnisliste") if isinstance(data, dict) else None
+        if items is None and isinstance(data, dict) and "maxErgebnisse" in data:
+            items = []
         if not isinstance(items, list):
             print(f"[search] arbeitsagentur '{kw}': unexpected response shape", file=sys.stderr)
             continue
         for j in items:
             if not isinstance(j, dict):
                 continue
-            refnr = j.get("refnr") or j.get("refNr") or j.get("id") or ""
-            title = j.get("titel") or j.get("title") or ""
+            refnr = j.get("referenznummer") or ""
+            title = j.get("stellenangebotsTitel") or ""
             if not refnr or not title:
                 continue
-            employer = j.get("arbeitgeber")
-            if isinstance(employer, dict):
-                employer = employer.get("name") or employer.get("firma") or ""
-            place = j.get("arbeitsort")
-            if isinstance(place, dict):
-                place = place.get("ort") or place.get("region") or ""
-            elif not isinstance(place, str):
-                place = ""
+            employer = j.get("firma") or ""
+            locs = j.get("stellenlokationen") or []
+            place = ""
+            if locs and isinstance(locs[0], dict):
+                adr = locs[0].get("adresse") or {}
+                place = adr.get("ort") or adr.get("region") or ""
             yield {
                 "job_title": title,
                 "company": employer or "Arbeitsagentur",
@@ -696,8 +700,7 @@ def collect(track=None):
             sources = [_fetch_arbeitnow, _fetch_html_boards]
     else:
         tracks = list(TRACKS)
-    if (os.environ.get("ARBEITSAGENTUR_API_KEY") or "").strip():
-        sources.append(_fetch_arbeitsagentur)
+    sources.append(_fetch_arbeitsagentur)
     if _websearch_enabled():
         sources.append(_fetch_websearch)
 

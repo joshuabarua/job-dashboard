@@ -16,6 +16,11 @@ class _FakeResp:
         self.status_code = status_code
         self._payload = payload or {}
 
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests as _rq
+            raise _rq.exceptions.HTTPError(f"HTTP {self.status_code}")
+
     def json(self):
         return self._payload
 
@@ -317,12 +322,39 @@ def test_freshness_params_offline():
           f"startPublishedDate ({days}d ago), parallel objective")
 
 
-def test_arbeitsagentur_dormant_offline():
-    """Without ARBEITSAGENTUR_API_KEY the source yields nothing, no network."""
-    env = {"ARBEITSAGENTUR_API_KEY": ""}
-    with patch.dict(os.environ, env):
-        assert list(jobsearch._fetch_arbeitsagentur()) == []
-    print("[check] arbeitsagentur dormant passed: no key -> no calls")
+def test_arbeitsagentur_offline():
+    """Arbeitsagentur maps v6 fields and tolerates empty/malformed responses."""
+    assert jobsearch.ARBEITSAGENTUR_KEY, "public client id should be the default"
+
+    empty = _FakeResp(200, {"maxErgebnisse": 0})
+    full = _FakeResp(200, {"ergebnisliste": [{
+        "stellenangebotsTitel": "IT Support Engineer (m/w/d)",
+        "firma": "Acme GmbH",
+        "referenznummer": "1234-5678-S",
+        "stellenlokationen": [{"adresse": {"ort": "Berlin"}}],
+    }]})
+    calls = []
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        calls.append(params.get("was"))
+        return full if params.get("was") == "it support" else empty
+
+    saved = jobsearch.TRACKS
+    jobsearch.TRACKS = {"Tech Support": {"keywords": ["it support"], "remote": False,
+                                         "location": "Berlin", "cv": "x"}}
+    try:
+        with patch.object(jobsearch.requests, "get", fake_get):
+            jobs = list(jobsearch._fetch_arbeitsagentur())
+    finally:
+        jobsearch.TRACKS = saved
+
+    assert calls == ["it support"], calls
+    assert jobs == [{
+        "job_title": "IT Support Engineer (m/w/d)", "company": "Acme GmbH",
+        "location": "Berlin",
+        "url": "https://www.arbeitsagentur.de/jobsuche/jobdetail/1234-5678-S",
+        "tags": [], "remote": False}], jobs
+    print("[check] arbeitsagentur passed: v6 mapping + empty-result tolerance")
 
 
 def _rejected_count(links):
@@ -346,7 +378,7 @@ def main():
     test_company_from_url_offline()
     test_declined_employer_offline()
     test_freshness_params_offline()
-    test_arbeitsagentur_dormant_offline()
+    test_arbeitsagentur_offline()
 
     print("\nProvider status:")
     for name, state in websearch.status().items():
