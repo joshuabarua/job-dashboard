@@ -48,6 +48,18 @@ Aggregator/search pages, salary pages (e.g. `glassdoor.(com|co.uk)/Salaries/`), 
 **Unwanted title patterns**
 Titles ending in `jobs`, `salary:`, `stellenangebote`, `jobs in`, `open jobs`, `hiring ... in ... cost breakdown`.
 
+**Declined employer**
+When a tracker row has status `Declined`, its company name, employer-specific URL host, and ATS employer slug are remembered for the run. New candidates whose canonical URL host or normalized company name matches are rejected as `Declined employer`. Shared job-board/aggregator hosts (arbeitnow, remotive, generic ATS platform hosts, ...) are never blocked wholesale — only employer-identifying hosts are.
+
+## Search Pipeline Details
+
+- **Canonical URLs**: candidate and tracker URLs are normalized before dedupe (lowercase host, no `www.`, no fragment, no trailing slash, `utm_*` and known tracking params dropped; meaningful params like `?id=` kept). The canonical form is stored in the CSV.
+- **Web search** (`WEBSEARCH_ENABLED=1` only): ~2 queries per track — `{kw1} remote jobs` + `{kw1} {kw2} remote jobs` for remote tracks, `{kw1} jobs Berlin` + `{kw1} stellenanzeigen Berlin` for Berlin tracks. Providers add freshness hints where supported (serper/firecrawl `tbs=qdr:m`, exa `startPublishedDate`, parallel objective text).
+- **Company labels**: ATS-hosted result URLs derive the company from the employer slug (`boards.greenhouse.io/acme/...` -> `Acme`, `acme.personio.de` -> `Acme`); other URLs fall back to the domain label.
+- **Extract stage**: listing pages are mined for job links (budget `EXTRACT_MAX_PAGES`/`EXTRACT_MAX_PER_HOST`); seed pages live in `EXTRACT_SEEDS`.
+- **Verify stage** (`WEBSEARCH_ENABLED=1` only): the top `EXTRACT_MAX_VERIFY` (default 12) candidates by score have their posting page extracted; candidates are dropped when the body shows a language requirement (`REJECT_LANG` terms) or a dead-listing marker (`no longer available`, `stelle ist nicht mehr`, `position has been filled`, `expired`). Extraction failures keep the candidate. Verified candidates carry `_verified: True`.
+- **Arbeitsagentur**: dormant source active only when `ARBEITSAGENTUR_API_KEY` is set; queries the bund.dev jobsuche API once per non-remote track keyword plus one generic `software` query.
+
 ## Scoring (0–10)
 
 The match score is a 0–10 value shown on each card.

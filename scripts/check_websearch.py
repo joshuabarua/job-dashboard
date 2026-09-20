@@ -3,10 +3,12 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from collections import Counter
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from app import websearch
 from app import search as jobsearch
+from app import tracker
 
 
 class _FakeResp:
@@ -233,6 +235,96 @@ def test_pipeline_assertions():
     print("[check] pipeline assertions passed: hono boundary, seniority, fullstack")
 
 
+def test_canonical_url_offline():
+    """utm_*/trk params stripped, meaningful ?id= kept, host normalized."""
+    c = tracker.canonical_url
+    assert c("HTTPS://WWW.Example.com/Jobs/?utm_source=x&id=42#frag") == \
+        "https://example.com/Jobs?id=42"
+    assert c("https://www.reed.co.uk/jobs/x?id=123&trk=abc&utm_medium=m") == \
+        "https://reed.co.uk/jobs/x?id=123"
+    assert c("https://EXAMPLE.com/") == "https://example.com"
+    assert c("https://example.com/a/?gclid=z&b=1") == "https://example.com/a?b=1"
+    assert c("") == ""
+    print("[check] canonical_url passed: utm_/trk/gclid stripped, ?id= kept, "
+          "www./fragment/trailing slash removed")
+
+
+def test_company_from_url_offline():
+    """ATS employer slugs: path segment, personio subdomain, non-ATS fallback."""
+    f = jobsearch._company_from_url
+    assert f("https://boards.greenhouse.io/acme/jobs/123") == "Acme"
+    assert f("https://jobs.lever.co/octo-energy/abc-123") == "Octo Energy"
+    assert f("https://acme.personio.de/job/123") == "Acme"
+    assert f("https://boards.eu.greenhouse.io/sosafe/jobs/4279831101?source=LinkedIn") \
+        == "Sosafe"
+    assert f("https://www.example-corp.com/careers/x") == "example-corp"
+    print("[check] company-from-URL passed: greenhouse/lever path slug, "
+          "personio subdomain, domain fallback")
+
+
+def test_declined_employer_offline():
+    """Declined rows feed host+name+slug identities; shared boards skipped."""
+    rows = [
+        {"status": "Declined", "company": "Acme GmbH",
+         "url": "https://boards.greenhouse.io/acme-gmbh/jobs/1?utm_source=x"},
+        {"status": "Declined", "company": "Widgets",
+         "url": "https://widgets.example.com/careers/1"},
+        {"status": "Declined", "company": "Someco",
+         "url": "https://www.arbeitnow.com/jobs/companies/someco/job-1"},
+        {"status": "New", "company": "Other",
+         "url": "https://other.example.com/j/1"},
+    ]
+    with patch.object(tracker, "get_jobs", lambda: rows):
+        declined = tracker.declined_domains()
+    assert "acmegmbh" in declined  # company name and ATS slug normalize alike
+    assert "widgets.example.com" in declined
+    assert "someco" in declined
+    assert "arbeitnow.com" not in declined  # shared board host skipped
+    assert "boards.greenhouse.io" not in declined  # ATS platform host skipped
+    assert "other.example.com" not in declined  # status != Declined
+
+    def job(company, url):
+        return {"job_title": "Dev", "company": company, "url": url}
+
+    assert jobsearch._declined_employer(
+        job("Acme GmbH", "https://x.io/a"), declined) == "Declined employer"
+    assert jobsearch._declined_employer(
+        job("Nope", "https://widgets.example.com/j/9?utm_source=y"),
+        declined) == "Declined employer"
+    assert jobsearch._declined_employer(
+        job("Nope", "https://boards.greenhouse.io/acme-gmbh/jobs/99"),
+        declined) == "Declined employer"  # slug from candidate URL
+    assert jobsearch._declined_employer(
+        job("Nope", "https://nope.example.com/1"), declined) is None
+    assert jobsearch._declined_employer(job("Acme GmbH", "https://x.io/a"),
+                                        set()) is None
+    print("[check] declined-employer passed: host/name/slug match, "
+          "shared-board and non-declined rows ignored")
+
+
+def test_freshness_params_offline():
+    """serper/firecrawl tbs=qdr:m, exa startPublishedDate ~30d, parallel text."""
+    by = {p["name"]: p for p in websearch.PROVIDERS}
+    assert by["serper"]["payload"]("q", 5)["tbs"] == "qdr:m"
+    assert by["firecrawl"]["payload"]("q", 5)["tbs"] == "qdr:m"
+    dt = datetime.fromisoformat(by["exa"]["payload"]("q", 5)["startPublishedDate"])
+    days = (datetime.now(timezone.utc) - dt).days
+    assert 25 <= days <= 35, f"exa startPublishedDate {days}d ago"
+    assert "last 30 days" in by["parallel"]["payload"]("q", 5)["objective"]
+    assert "tbs" not in by["tavily"]["payload"]("q", 5)
+    assert "startPublishedDate" not in by["linkup"]["payload"]("q", 5)
+    print("[check] freshness params passed: serper/firecrawl qdr:m, exa "
+          f"startPublishedDate ({days}d ago), parallel objective")
+
+
+def test_arbeitsagentur_dormant_offline():
+    """Without ARBEITSAGENTUR_API_KEY the source yields nothing, no network."""
+    env = {"ARBEITSAGENTUR_API_KEY": ""}
+    with patch.dict(os.environ, env):
+        assert list(jobsearch._fetch_arbeitsagentur()) == []
+    print("[check] arbeitsagentur dormant passed: no key -> no calls")
+
+
 def _rejected_count(links):
     n = 0
     for l in links:
@@ -250,6 +342,11 @@ def main():
     test_extract_failover_offline()
     test_extract_budget_offline()
     test_pipeline_assertions()
+    test_canonical_url_offline()
+    test_company_from_url_offline()
+    test_declined_employer_offline()
+    test_freshness_params_offline()
+    test_arbeitsagentur_dormant_offline()
 
     print("\nProvider status:")
     for name, state in websearch.status().items():

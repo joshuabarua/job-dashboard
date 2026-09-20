@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -43,7 +44,9 @@ PROVIDERS = [
         "env": "FIRECRAWL_API_KEY",
         "url": "https://api.firecrawl.dev/v2/search",
         "headers": lambda key: {"Authorization": f"Bearer {key}"},
-        "payload": lambda query, limit: {"query": query, "limit": limit},
+        "payload": lambda query, limit: {
+            "query": query, "limit": limit, "tbs": "qdr:m",
+        },
         "parse": lambda data: [
             {"title": item.get("title", ""), "url": item.get("url", ""),
              "snippet": item.get("description") or ""}
@@ -70,7 +73,9 @@ PROVIDERS = [
         "env": "SERPER_API_KEY",
         "url": "https://google.serper.dev/search",
         "headers": lambda key: {"X-API-KEY": key},
-        "payload": lambda query, limit: {"q": query, "num": limit},
+        "payload": lambda query, limit: {
+            "q": query, "num": limit, "tbs": "qdr:m",
+        },
         "parse": lambda data: [
             {"title": item.get("title", ""), "url": item.get("link", ""),
              "snippet": item.get("snippet") or ""}
@@ -83,7 +88,12 @@ PROVIDERS = [
         "env": "EXA_API_KEY",
         "url": "https://api.exa.ai/search",
         "headers": lambda key: {"x-api-key": key},
-        "payload": lambda query, limit: {"query": query, "numResults": limit},
+        "payload": lambda query, limit: {
+            "query": query, "numResults": limit,
+            "startPublishedDate": (
+                datetime.now(timezone.utc) - timedelta(days=30)
+            ).isoformat(),
+        },
         "parse": lambda data: [
             {"title": item.get("title", ""), "url": item.get("url", ""),
              "snippet": ""}
@@ -96,7 +106,8 @@ PROVIDERS = [
         "url": "https://api.parallel.ai/v1/search",
         "headers": lambda key: {"x-api-key": key},
         "payload": lambda query, limit: {
-            "objective": query, "search_queries": [query], "mode": "fast",
+            "objective": query + " Focus on postings from the last 30 days.",
+            "search_queries": [query], "mode": "fast",
         },
         "parse": lambda data: [
             {"title": item.get("title", ""), "url": item.get("url", ""),
@@ -287,6 +298,54 @@ def extract_links(url, objective):
         return []
     jobs, _seeds = _extract_mined(url, objective)
     return jobs
+
+
+def extract_content(url, objective):
+    """Extract a single page's raw markdown via the extract chain."""
+    if requests is None:
+        print("[websearch] requests not installed; skipping", file=sys.stderr)
+        return ""
+    return _extract_markdown(url, objective) or ""
+
+
+# Subdomain labels that never identify an employer on ATS hosts.
+_GENERIC_LABELS = {
+    "jobs", "job", "boards", "careers", "career", "www", "recruiting",
+    "apply", "pages", "eu", "us", "de", "en", "api", "app",
+}
+
+# Path segments that never identify an employer on ATS hosts.
+_SLUG_SKIP = _TAXONOMY_SEGMENTS | {
+    "jobs", "job", "careers", "career", "o", "postings", "apply",
+}
+
+
+def ats_employer_slug(url):
+    """Best-effort employer slug for ATS-hosted URLs; '' when not ATS.
+
+    Personio/workday-style hosts carry the company in the subdomain
+    (acme.personio.de); greenhouse/lever-style hosts carry it as the
+    first meaningful path segment (boards.greenhouse.io/acme/jobs/123).
+    """
+    parts = urlparse(url or "")
+    host = parts.netloc.lower().split(":", 1)[0]
+    if host.startswith("www."):
+        host = host[4:]
+    ats = next((s for s in _ATS_SUFFIXES
+                if host == s or host.endswith("." + s)), None)
+    if not ats:
+        return ""
+    if host != ats:
+        prefix = host[: -len(ats)].rstrip(".")
+        for label in prefix.split("."):
+            if label and label not in _GENERIC_LABELS \
+                    and not re.fullmatch(r"wd\d+", label):
+                return label
+    for seg in (s for s in parts.path.split("/") if s):
+        seg = seg.lower()
+        if seg not in _SLUG_SKIP and not seg.isdigit():
+            return seg
+    return ""
 
 
 def _host(url):

@@ -143,7 +143,6 @@ REJECT_HOSTS = {"linkedin.com"}
 REJECT_URL_PATTERNS = [
     re.compile(p, re.I) for p in [
         r"glassdoor\.com/Job/.*-jobs-SRCH",
-        r"glassdoor\.(com|co\.uk)/Salaries/",
         r"indeed\.com/q-.*-jobs\.html",
         r"indeed\.com/q-.*-l-.*-jobs\.html",
         r"stepstone\.de/jobs/.*/in-berlin",
@@ -173,6 +172,19 @@ REJECT_URL_PATTERNS = [
     ]
 ]
 
+# Content pages that are neither jobs nor job listings: rejected outright and
+# never sent to the extract stage.
+REJECT_CONTENT_PATTERNS = [
+    re.compile(p, re.I) for p in [
+        r"glassdoor\.(com|co\.uk)/Salaries/",
+        r"/(salary|salaries)(/|$)",
+        r"salaryexpert\.com",
+        r"indeed\.com/career/",
+        r"payscale\.com",
+        r"levels\.fyi",
+    ]
+]
+
 REJECT_TITLE_PATTERNS = [
     re.compile(p, re.I) for p in [
         r"\b\d+\s*\+?\s*(jobs|stellenangebote)\b",
@@ -181,6 +193,7 @@ REJECT_TITLE_PATTERNS = [
         r"vacancies, jobs as",
         r"stellenangebote",
         r"salary:",
+        r"\bsalar(y|ies)\b",
         r"jobs and vacancies",
         r"hiring .* in .* cost breakdown",
         r"\bjobs\s*$",
@@ -241,6 +254,61 @@ def _fetch_remotive():
             "tags": j.get("tags") or [],
             "remote": True,
         }
+
+
+def _fetch_arbeitsagentur():
+    """Bundesagentur für Arbeit Jobsuche API; dormant without ARBEITSAGENTUR_API_KEY."""
+    key = (os.environ.get("ARBEITSAGENTUR_API_KEY") or "").strip()
+    if not key:
+        return
+    if requests is None:
+        print("[search] requests not installed; skipping arbeitsagentur", file=sys.stderr)
+        return
+    queries = []
+    for cfg in TRACKS.values():
+        if not cfg["remote"] and cfg["keywords"][0] not in queries:
+            queries.append(cfg["keywords"][0])
+    if any(cfg["remote"] for cfg in TRACKS.values()):
+        queries.append("software")
+    for kw in queries:
+        try:
+            resp = requests.get(
+                "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs",
+                headers={"X-API-Key": key},
+                params={"was": kw, "wo": "Berlin", "size": 25},
+                timeout=TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"[search] arbeitsagentur '{kw}' failed: {e}", file=sys.stderr)
+            continue
+        items = data.get("stellenangebote") if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            print(f"[search] arbeitsagentur '{kw}': unexpected response shape", file=sys.stderr)
+            continue
+        for j in items:
+            if not isinstance(j, dict):
+                continue
+            refnr = j.get("refnr") or j.get("refNr") or j.get("id") or ""
+            title = j.get("titel") or j.get("title") or ""
+            if not refnr or not title:
+                continue
+            employer = j.get("arbeitgeber")
+            if isinstance(employer, dict):
+                employer = employer.get("name") or employer.get("firma") or ""
+            place = j.get("arbeitsort")
+            if isinstance(place, dict):
+                place = place.get("ort") or place.get("region") or ""
+            elif not isinstance(place, str):
+                place = ""
+            yield {
+                "job_title": title,
+                "company": employer or "Arbeitsagentur",
+                "location": place or "Berlin",
+                "url": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
+                "tags": [],
+                "remote": False,
+            }
 
 
 # --- Additional HTML boards (user-provided) --------------------------------
@@ -312,31 +380,47 @@ def _domain_label(url):
     return host or "web"
 
 
+def _prettify_slug(slug):
+    words = [w for w in re.split(r"[-_./]+", slug or "") if w]
+    return " ".join(w.capitalize() for w in words)
+
+
+def _company_from_url(url):
+    """Company label: ATS employer slug when possible, else domain label."""
+    slug = websearch.ats_employer_slug(url)
+    if slug:
+        return _prettify_slug(slug)
+    return _domain_label(url)
+
+
 def _fetch_websearch():
-    """Metered multi-provider web search; one query per track."""
+    """Metered multi-provider web search; ~2 queries per track."""
     if websearch.requests is None:
         print("[search] requests not installed; skipping web search", file=sys.stderr)
         return
     for cfg in TRACKS.values():
-        keyword = cfg["keywords"][0]
+        kw1 = cfg["keywords"][0]
         if cfg["remote"]:
-            query = f"{keyword} remote jobs"
+            queries = [f"{kw1} remote jobs"]
+            if len(cfg["keywords"]) > 1:
+                queries.append(f"{kw1} {cfg['keywords'][1]} remote jobs")
         else:
-            query = f"{keyword} jobs Berlin"
-        try:
-            results = websearch.search(query, limit=10)
-        except Exception as e:
-            print(f"[search] websearch failed ({query}): {e}", file=sys.stderr)
-            continue
-        for r in results:
-            yield {
-                "job_title": r["title"],
-                "company": _domain_label(r["url"]),
-                "location": "Remote" if cfg["remote"] else "Berlin",
-                "url": r["url"],
-                "tags": [r["snippet"]] if r.get("snippet") else [],
-                "remote": cfg["remote"],
-            }
+            queries = [f"{kw1} jobs Berlin", f"{kw1} stellenanzeigen Berlin"]
+        for query in queries:
+            try:
+                results = websearch.search(query, limit=10)
+            except Exception as e:
+                print(f"[search] websearch failed ({query}): {e}", file=sys.stderr)
+                continue
+            for r in results:
+                yield {
+                    "job_title": r["title"],
+                    "company": _company_from_url(r["url"]),
+                    "location": "Remote" if cfg["remote"] else "Berlin",
+                    "url": r["url"],
+                    "tags": [r["snippet"]] if r.get("snippet") else [],
+                    "remote": cfg["remote"],
+                }
 
 
 def _websearch_enabled():
@@ -381,6 +465,9 @@ def _rejected(job):
     for host in REJECT_HOSTS:
         if host in url:
             return f"Rejected host: {host}"
+    for pat in REJECT_CONTENT_PATTERNS:
+        if pat.search(url):
+            return "Non-job content page"
     # Arbeitsagentur direct /jobdetail/ postings are the only ones we keep
     if not ("arbeitsagentur.de/jobsuche/" in url and "/jobdetail/" in url):
         for pat in REJECT_URL_PATTERNS:
@@ -436,20 +523,37 @@ def _page_host(url):
     return host
 
 
-def _mined_candidate(link, tracks, seen_urls):
+def _declined_employer(job, declined):
+    """'Declined employer' when the URL host or company matches a declined row."""
+    if not declined:
+        return None
+    url = job.get("url", "")
+    host = urlparse(tracker.canonical_url(url)).netloc
+    if host and host in declined:
+        return "Declined employer"
+    for key in (tracker._company_key(job.get("company")),
+                tracker._company_key(websearch.ats_employer_slug(url))):
+        if key and key in declined:
+            return "Declined employer"
+    return None
+
+
+def _mined_candidate(link, tracks, seen_urls, declined=None):
     """Run a mined link through the same pipeline as any source job."""
-    url = (link.get("url") or "").strip()
+    url = tracker.canonical_url(link.get("url"))
     if not url or url in seen_urls:
         return None
     seen_urls.add(url)
     base = {
         "job_title": link.get("title", ""),
-        "company": _domain_label(url),
+        "company": _company_from_url(url),
         "location": "",
         "url": url,
         "tags": [],
         "remote": False,
     }
+    if _declined_employer(base, declined):
+        return None
     if _rejected(base):
         return None
     for t in tracks:
@@ -476,7 +580,7 @@ def _mined_candidate(link, tracks, seen_urls):
     return None
 
 
-def _extract_stage(listing_urls, tracks, seen_urls):
+def _extract_stage(listing_urls, tracks, seen_urls, declined=None):
     """Extract listing pages and mine jobs; bounded depth-2 facet hop.
 
     Budget: EXTRACT_MAX_PAGES total extract calls (default 25) shared across
@@ -511,7 +615,7 @@ def _extract_stage(listing_urls, tracks, seen_urls):
             if depth == 1:
                 seeds.extend(new_seeds)
             for link in jobs:
-                cand = _mined_candidate(link, tracks, seen_urls)
+                cand = _mined_candidate(link, tracks, seen_urls, declined)
                 if cand:
                     found.append(cand)
         if pages >= max_pages:
@@ -520,6 +624,65 @@ def _extract_stage(listing_urls, tracks, seen_urls):
     if pages:
         print(f"[search] extract stage used {pages} page(s)", file=sys.stderr)
     return found
+
+
+# --- Verify stage: extract top candidates' pages, drop dead/ineligible -----
+
+_VERIFY_DEAD_MARKERS = [
+    "no longer available", "stelle ist nicht mehr",
+    "position has been filled", "expired",
+]
+
+
+def _verify_candidates(candidates):
+    """Extract top-scored candidates' pages; drop dead/German-required ones.
+
+    Bounded by EXTRACT_MAX_VERIFY (default 12). Extraction failure is
+    inconclusive and keeps the candidate; survivors get '_verified': True.
+    """
+    if not _websearch_enabled() or websearch.requests is None:
+        return candidates
+    limit = int(os.environ.get("EXTRACT_MAX_VERIFY", "12"))
+    ranked = sorted(range(len(candidates)),
+                    key=lambda i: -candidates[i].get("match_score", 0))[:limit]
+    checked = 0
+    out = []
+    for i, c in enumerate(candidates):
+        if i not in ranked:
+            out.append(c)
+            continue
+        checked += 1
+        try:
+            body = websearch.extract_content(
+                c["url"], "Job posting requirements and current status")
+        except Exception as e:
+            print(f"[search] verify extract failed for {c['url']}: {e}",
+                  file=sys.stderr)
+            body = ""
+        if not body:
+            out.append(c)
+            continue
+        text = _norm(body)
+        drop = next(
+            (f"language: {k}" for k in REJECT_LANG
+             if re.search(rf"\b{re.escape(k)}\b", text)),
+            None)
+        if drop is None:
+            drop = next(
+                (f"dead listing: {m}" for m in _VERIFY_DEAD_MARKERS
+                 if re.search(rf"\b{re.escape(m)}\b", text)),
+                None)
+        if drop:
+            print(f"[search] verify dropped {c['job_title'][:60]!r}: {drop}",
+                  file=sys.stderr)
+            continue
+        c["_verified"] = True
+        out.append(c)
+    if checked:
+        verified = sum(1 for c in out if c.get("_verified"))
+        print(f"[search] verify stage checked {checked} candidate(s), "
+              f"{verified} verified", file=sys.stderr)
+    return out
 
 
 def collect(track=None):
@@ -533,18 +696,23 @@ def collect(track=None):
             sources = [_fetch_arbeitnow, _fetch_html_boards]
     else:
         tracks = list(TRACKS)
+    if (os.environ.get("ARBEITSAGENTUR_API_KEY") or "").strip():
+        sources.append(_fetch_arbeitsagentur)
     if _websearch_enabled():
         sources.append(_fetch_websearch)
 
+    declined = tracker.declined_domains()
     seen_urls = set()
     listing_urls = []
     for fetch in sources:
         try:
             for job in fetch():
-                url = job["url"].strip()
+                url = tracker.canonical_url(job["url"])
                 if not url or url in seen_urls:
                     continue
                 seen_urls.add(url)
+                if _declined_employer(job, declined):
+                    continue
                 reason = _rejected(job)
                 if reason:
                     if reason in _LISTING_REASONS:
@@ -575,7 +743,9 @@ def collect(track=None):
             print(f"[search] source failed: {e}", file=sys.stderr)
 
     if _websearch_enabled():
-        candidates.extend(_extract_stage(listing_urls, tracks, seen_urls))
+        candidates.extend(_extract_stage(listing_urls, tracks, seen_urls,
+                                         declined))
+        candidates = _verify_candidates(candidates)
 
     # drop duplicates against tracker CSV
     final = []

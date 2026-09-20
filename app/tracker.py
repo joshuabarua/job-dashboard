@@ -12,8 +12,10 @@ import re
 import shutil
 from datetime import date
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import app.db as db
+import app.websearch as websearch
 
 BASE_DIR = Path(__file__).resolve().parent
 CSV_FILE = Path(os.environ.get("JOBS_TRACKER_CSV", r"C:\Users\Josh\job-dashboard\jobs_tracker.csv"))
@@ -276,6 +278,92 @@ def pipeline(jobs):
     ]
 
 
+_TRACKING_PARAMS = {
+    "trk", "ref", "refid", "ref_src", "source", "fbclid", "gclid",
+    "igsh", "mc_cid", "mc_eid", "tracking_id", "_ga",
+}
+
+# Job-board/aggregator domains whose host alone never identifies an employer.
+_SHARED_BOARDS = (
+    "arbeitnow.com", "remotive.com", "remoteok.com", "startup.jobs",
+    "berlinstartupjobs.com", "stepstone.de", "indeed.com", "glassdoor.com",
+    "linkedin.com", "xing.com", "wellfound.com", "wearedevelopers.com",
+    "jobtensor.com", "englishjobs.de", "reed.co.uk", "impactpool.org",
+    "hotelcareer.com", "craigslist.org", "studysmarter.de",
+)
+
+# ATS hosts where an employer-specific subdomain identifies the company.
+_SUBDOMAIN_ATS = {
+    "personio.de", "workday.com", "myworkdayjobs.com", "workable.com",
+    "recruitee.com", "bamboohr.com", "teamtailor.com",
+}
+
+
+def canonical_url(url):
+    """Normalize a job URL for dedupe/storage.
+
+    Lowercases scheme+host, strips the fragment, a leading "www." and the
+    trailing slash, and drops known tracking params (utm_* plus a fixed
+    set). All other params are kept (e.g. reed.co.uk's meaningful ?id=).
+    """
+    url = (url or "").strip()
+    if not url:
+        return ""
+    parts = urlparse(url)
+    if not parts.netloc:
+        return url.lower()
+    host = parts.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    kept = [
+        (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        if not k.lower().startswith("utm_") and k.lower() not in _TRACKING_PARAMS
+    ]
+    return urlunparse((parts.scheme.lower(), host, parts.path.rstrip("/"),
+                       "", urlencode(kept), ""))
+
+
+def _company_key(name):
+    """Aggressive normalizer for company-name matching ('Acme GmbH'->'acmegmbh')."""
+    return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
+
+
+def _shared_board(host):
+    return any(host == b or host.endswith("." + b) for b in _SHARED_BOARDS)
+
+
+def declined_domains():
+    """Employer identities from Declined rows, for decline-learning rejects.
+
+    Returns a set mixing canonical URL hosts and normalized company keys.
+    Shared job-board/aggregator hosts are skipped (they identify no
+    employer); for ATS-hosted rows the employer slug (path or subdomain)
+    is contributed instead of the platform host.
+    """
+    declined = set()
+    for j in get_jobs():
+        if (j.get("status") or "").strip() != "Declined":
+            continue
+        name = _company_key(j.get("company"))
+        if name:
+            declined.add(name)
+        url = j.get("url") or ""
+        host = urlparse(canonical_url(url)).netloc
+        if not host:
+            continue
+        ats = next((s for s in websearch._ATS_SUFFIXES
+                    if host == s or host.endswith("." + s)), None)
+        if ats:
+            slug = websearch.ats_employer_slug(url)
+            if slug:
+                declined.add(_company_key(slug))
+            if ats in _SUBDOMAIN_ATS and host != ats:
+                declined.add(host)
+        elif not _shared_board(host):
+            declined.add(host)
+    return declined
+
+
 def _normalize_title(title):
     t = re.sub(r"\(m/w/d\)|\(f/m/d\)|\(x/w/m\)|\(w/m/d\)", "", title, flags=re.IGNORECASE)
     t = re.sub(r"/\s*-?\s*in\b", "", t, flags=re.IGNORECASE)
@@ -316,9 +404,9 @@ def has_duplicate(candidate):
     """
     title_raw = _normalize_title(candidate.get("job_title", ""))
     company = (candidate.get("company", "") or "").strip().lower()
-    url = (candidate.get("url", "") or "").strip().lower()
+    url = canonical_url(candidate.get("url", ""))
     for j in get_jobs():
-        jurl = (j.get("url", "") or "").strip().lower()
+        jurl = canonical_url(j.get("url", ""))
         if url and jurl and url == jurl:
             return "same URL"
         jtitle = _normalize_title(j.get("job_title", "") or "")
@@ -336,7 +424,7 @@ def dedup_status(jobs):
     urls = {}
     pairs = {}
     for i, j in enumerate(jobs):
-        url = (j.get("url", "") or "").strip().lower()
+        url = canonical_url(j.get("url", ""))
         title = (j.get("job_title", "") or "").strip().lower()
         company = (j.get("company", "") or "").strip().lower()
         if url:
