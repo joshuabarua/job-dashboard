@@ -1,13 +1,11 @@
 """Build static JSON + assets for GitHub Pages."""
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault("JOBS_TRACKER_CSV", str(ROOT / "jobs_tracker.csv"))
 
 from app import tracker
 from app.main import TRACK_COLORS

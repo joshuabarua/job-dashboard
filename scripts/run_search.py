@@ -1,11 +1,9 @@
-"""Run a full cloud search and append new candidates to jobs_tracker.csv."""
-import os
+"""Run a full cloud search and append new candidates to Supabase."""
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault("JOBS_TRACKER_CSV", str(ROOT / "jobs_tracker.csv"))
 
 from app import search, tracker
 

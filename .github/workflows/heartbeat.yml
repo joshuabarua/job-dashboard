@@ -37,7 +37,6 @@ jobs:
       - name: Refresh job listings
         run: python scripts/run_search.py
         env:
-          JOBS_TRACKER_CSV: ${{ github.workspace }}/jobs_tracker.csv
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           WEBSEARCH_ENABLED: ${{ (github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
@@ -51,7 +50,6 @@ jobs:
       - name: Build static site
         run: python scripts/build_static.py
         env:
-          JOBS_TRACKER_CSV: ${{ github.workspace }}/jobs_tracker.csv
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
@@ -59,12 +57,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add jobs_tracker.csv public/
+          git add public/
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
             git commit -m "chore: refresh jobs [$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
-            git pull --rebase || (git checkout --theirs jobs_tracker.csv public/ 2>/dev/null; python scripts/build_static.py; git add jobs_tracker.csv public/; GIT_EDITOR=true git rebase --continue)
+            git pull --rebase || (git checkout --theirs public/ 2>/dev/null; python scripts/build_static.py; git add public/; GIT_EDITOR=true git rebase --continue)
             git push
           fi
 

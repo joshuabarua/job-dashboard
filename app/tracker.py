@@ -1,25 +1,14 @@
 """Job tracker data layer for the Job Search Command Center.
 
-Reads jobs_tracker.csv (maintained by job_heartbeat.py) as the source of truth.
-Status overrides applied through the dashboard live in overrides.json so the
-CSV is never written by the dashboard (except via /api/jobs/add).
+Supabase is the single source of truth (see app/db.py).
 """
 
-import csv
-import json
-import os
 import re
-import shutil
 from datetime import date
-from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import app.db as db
 import app.websearch as websearch
-
-BASE_DIR = Path(__file__).resolve().parent
-CSV_FILE = Path(os.environ.get("JOBS_TRACKER_CSV", r"C:\Users\Josh\job-dashboard\jobs_tracker.csv"))
-OVERRIDES_FILE = BASE_DIR / "overrides.json"
 
 WORKFLOW = ["New", "Applied", "Reviewed", "Interview", "Offer", "Declined", "Starred"]
 
@@ -37,14 +26,6 @@ TRACKS = [
 ]
 
 
-def _read_csv():
-    if not CSV_FILE.exists():
-        return []
-    with open(CSV_FILE, "r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        return [row for row in reader if row.get("job_title")]
-
-
 _FIELDNAMES = [
     "notion_id", "job_title", "company", "location", "url", "track",
     "status", "date", "match_score", "recommended_cv", "why_fit",
@@ -53,7 +34,9 @@ _FIELDNAMES = [
 
 
 def add_job(candidate):
-    """Append a candidate to the CSV tracker. Returns (message, dup_reason)."""
+    """Append a candidate to Supabase. Returns (message, dup_reason)."""
+    if not db.ENABLED:
+        return False, "Supabase not configured"
     if not candidate.get("url") and not candidate.get("job_title"):
         return False, "Missing url and title"
     dup = has_duplicate(candidate)
@@ -75,15 +58,7 @@ def add_job(candidate):
         "application_strategy": candidate.get("application_strategy", ""),
         "tags": candidate.get("tags", "")
     })
-    if db.ENABLED:
-        db.insert(row)
-        return True, "ok"
-    write_header = not CSV_FILE.exists()
-    with open(CSV_FILE, "a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
-        if write_header:
-            writer.writeheader()
-        writer.writerow(row)
+    db.insert(row)
     return True, "ok"
 
 
@@ -104,90 +79,35 @@ def sort_jobs(jobs, sort_by="date"):
 
 
 def remove_job(identifier):
-    """Remove a job by notion_id or url and persist the CSV."""
+    """Remove a job by id, notion_id or url."""
     identifier = identifier.strip()
-    if db.ENABLED:
-        if _is_uuid(identifier):
-            db.delete_by_id(identifier)
-        else:
-            db.delete(identifier)
-        return True, "ok"
-    if not CSV_FILE.exists():
-        return False, "CSV not found"
-    with open(CSV_FILE, "r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        fieldnames = list(reader.fieldnames)
-        if "tags" not in fieldnames:
-            fieldnames.append("tags")
-        rows = []
-        for row in reader:
-            extra = row.pop(None, [])
-            if "tags" not in row:
-                row["tags"] = ",".join(extra)
-            rows.append(row)
-    match = None
-    for i, row in enumerate(rows):
-        if (row.get("notion_id") or "").strip() == identifier:
-            match = i
-            break
-    if match is None:
-        for i, row in enumerate(rows):
-            if (row.get("url") or "").strip() == identifier:
-                match = i
-                break
-    if match is None:
-        return False, "Job not found"
-    removed = rows.pop(match)
-    backup_path = CSV_FILE.parent / f"{CSV_FILE.name}.{date.today().isoformat()}.bak"
-    shutil.copy2(CSV_FILE, backup_path)
-    with open(CSV_FILE, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-    # clean up any override
-    overrides = _read_overrides()
-    oid = removed.get("notion_id", "").strip()
-    key = oid if oid else removed.get("url", "").strip()
-    if key and key in overrides:
-        del overrides[key]
-        _write_overrides(overrides)
+    if not db.ENABLED:
+        return False, "Supabase not configured"
+    if _is_uuid(identifier):
+        db.delete_by_id(identifier)
+    else:
+        db.delete(identifier)
     return True, "ok"
 
 
-def _read_overrides():
-    if not OVERRIDES_FILE.exists():
-        return {}
-    try:
-        with open(OVERRIDES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _write_overrides(overrides):
-    with open(OVERRIDES_FILE, "w", encoding="utf-8") as f:
-        json.dump(overrides, f, indent=2)
+_warned = False
 
 
 def get_jobs():
-    overrides = _read_overrides()
-    if db.ENABLED:
-        rows = db.fetch_all()
-        overrides = {}
-    else:
-        rows = _read_csv()
+    global _warned
+    if not db.ENABLED:
+        if not _warned:
+            print("[tracker] Supabase not configured; no jobs available")
+            _warned = True
+        return []
     jobs = []
-    for row in rows:
+    for row in db.fetch_all():
         j = dict(row)
         j["status"] = j.get("status") or "New"
         j.setdefault("date", "")
         j.setdefault("match_score", "")
         j["match_score"] = _norm_score(j.get("match_score"))
         j["location"] = _normalize_location(j.get("location"))
-        oid = j.get("notion_id", "").strip()
-        key = oid if oid else j.get("url", "").strip()
-        if key in overrides:
-            j["status"] = overrides[key]
         jobs.append(j)
     return sort_jobs(jobs)
 
@@ -203,30 +123,12 @@ def set_status(identifier, status):
     status = status.strip()
     if status not in WORKFLOW:
         return False, f"Invalid status: {status!r}"
-    if db.ENABLED:
-        if _is_uuid(identifier):
-            db.update_by_id(identifier, status)
-        else:
-            db.update_status(identifier, status)
-        return True, "ok"
-    jobs = get_jobs()
-    match = None
-    for j in jobs:
-        if j.get("notion_id", "").strip() == identifier:
-            match = j
-            break
-    if match is None:
-        for j in jobs:
-            if j.get("url", "").strip() == identifier:
-                match = j
-                break
-    if match is None:
-        return False, "Job not found"
-    oid = match.get("notion_id", "").strip()
-    key = oid if oid else match.get("url", "").strip()
-    overrides = _read_overrides()
-    overrides[key] = status
-    _write_overrides(overrides)
+    if not db.ENABLED:
+        return False, "Supabase not configured"
+    if _is_uuid(identifier):
+        db.update_by_id(identifier, status)
+    else:
+        db.update_status(identifier, status)
     return True, "ok"
 
 
