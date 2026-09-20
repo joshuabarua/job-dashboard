@@ -68,7 +68,7 @@ def add_job(candidate):
         "url": candidate.get("url", ""),
         "track": candidate.get("track", ""),
         "status": "New",
-        "date": candidate.get("date", ""),
+        "date": candidate.get("date") or date.today().isoformat(),
         "match_score": str(candidate.get("match_score", "")),
         "recommended_cv": candidate.get("recommended_cv", ""),
         "why_fit": candidate.get("why_fit", ""),
