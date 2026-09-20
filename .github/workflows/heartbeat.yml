@@ -64,6 +64,7 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "chore: refresh jobs [$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
+            git pull --rebase || (git checkout --theirs jobs_tracker.csv public/ 2>/dev/null; python scripts/build_static.py; git add jobs_tracker.csv public/; GIT_EDITOR=true git rebase --continue)
             git push
           fi
 
