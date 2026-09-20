@@ -285,12 +285,10 @@ def _norm_score(value):
 def _normalize_location(loc):
     """Collapse Berlin/Remote variants into canonical groups."""
     raw = (loc or "").lower().strip()
-    has_berlin = "berlin" in raw
     has_remote = "remote" in raw or "hybrid" in raw
-    if has_berlin and has_remote:
-        return "Berlin / Remote"
-    if has_berlin:
-        return "Berlin"
+    for city in ("Berlin", "London", "Brighton"):
+        if city.lower() in raw:
+            return f"{city} / Remote" if has_remote else city
     if has_remote:
         return "Remote"
     if raw:

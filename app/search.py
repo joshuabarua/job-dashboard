@@ -484,23 +484,34 @@ def _rejected(job):
     return None
 
 
+_OK_CITIES = ("berlin", "london", "brighton")
+_REMOTE_WORDS = ("remote", "anywhere", "work from home", "home office",
+                 "homeoffice", "wfh", "telecommut")
+_REMOTE_BLOCK = re.compile(
+    r"\b(usa?|u\.s\.?a?|united states|americas?|north america|canada|latam|"
+    r"apac|anz|australia|new zealand|india|asia|philippines|brazil|mexico|"
+    r"africa|south america)\b", re.I)
+
+
 def _location_ok(job, track_cfg):
+    """Acceptable: Berlin/London/Brighton on-site, or remote that isn't
+    restricted to a non-UK/EU region (covers 'remote', 'UK-wide remote',
+    'Germany-wide remote', 'EMEA remote')."""
     loc = _norm(job["location"])
-    if track_cfg["remote"] and job.get("remote"):
+    if any(c in loc for c in _OK_CITIES):
         return True
-    if track_cfg["remote"] and "berlin" not in loc:
-        # remote-first dev: only accept explicitly-remote listings
-        if "remote" in loc:
-            return True
+    if not track_cfg["remote"]:
         return False
-    return "berlin" in loc
+    if job.get("remote") or any(w in loc for w in _REMOTE_WORDS):
+        return not _REMOTE_BLOCK.search(loc)
+    return False
 
 
 def _score(hits, job, track_cfg):
     score = 3 + 2 * len(hits)
     if track_cfg["remote"] and job.get("remote"):
         score += 1
-    if "berlin" in _norm(job["job_title"]) and not track_cfg["remote"]:
+    if any(c in _norm(job["job_title"]) for c in _OK_CITIES) and not track_cfg["remote"]:
         score += 1
     return min(10, score)
 

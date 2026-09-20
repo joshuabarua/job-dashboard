@@ -240,6 +240,32 @@ def test_pipeline_assertions():
     print("[check] pipeline assertions passed: hono boundary, seniority, fullstack")
 
 
+def test_location_offline():
+    """Berlin/London/Brighton on-site, remote unless restricted outside UK/EU."""
+    def job(location, remote=False):
+        return {"job_title": "x", "company": "", "location": location,
+                "url": "", "tags": [], "remote": remote}
+
+    cfg = {"remote": True}
+    ok = ["Berlin", "London", "Brighton", "Remote", "Remote - UK",
+          "UK-wide remote", "Germany (Remote)", "Deutschlandweit remote",
+          "Remote - EMEA", "Berlin / Hybrid", "London, England"]
+    no = ["Remote - US only", "Remote (USA)", "New York", "Munich",
+          "Remote - APAC", "Toronto, Canada", "Remote - Australia",
+          "Paris", "", "Hamburg"]
+    for loc in ok:
+        assert jobsearch._location_ok(job(loc), cfg), f"should pass: {loc}"
+    for loc in no:
+        assert not jobsearch._location_ok(job(loc), cfg), f"should fail: {loc}"
+    # remote flag carries jobs with no location text
+    assert jobsearch._location_ok(job("", remote=True), cfg)
+    # on-site cities pass even on non-remote tracks; remote does not
+    assert jobsearch._location_ok(job("London"), {"remote": False})
+    assert not jobsearch._location_ok(job("Remote"), {"remote": False})
+    assert not jobsearch._location_ok(job("", remote=True), {"remote": False})
+    print("[check] location rules passed: cities + remote + region blocks")
+
+
 def test_canonical_url_offline():
     """utm_*/trk params stripped, meaningful ?id= kept, host normalized."""
     c = tracker.canonical_url
@@ -374,6 +400,7 @@ def main():
     test_extract_failover_offline()
     test_extract_budget_offline()
     test_pipeline_assertions()
+    test_location_offline()
     test_canonical_url_offline()
     test_company_from_url_offline()
     test_declined_employer_offline()
@@ -383,11 +410,12 @@ def main():
     print("\nProvider status:")
     for name, state in websearch.status().items():
         print(f"  {name}: {state}")
-    assert websearch.status()["tavily"] == "no key", \
-        "tavily has an empty key in .env and must report 'no key'"
+    expected_tavily = "ready" if os.environ.get("TAVILY_API_KEY") else "no key"
+    assert websearch.status()["tavily"] == expected_tavily, \
+        f"tavily must report '{expected_tavily}'"
     assert websearch.status()["parallel"] == "ready", \
         "parallel key is live in .env and must report 'ready'"
-    print("[check] tavily empty key reports 'no key', parallel live key 'ready'")
+    print(f"[check] tavily reports '{expected_tavily}', parallel live key 'ready'")
 
     # One real query through the search chain; spy on _call to see who served it.
     served_by = []
