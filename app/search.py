@@ -182,6 +182,7 @@ REJECT_CONTENT_PATTERNS = [
         r"indeed\.com/career/",
         r"payscale\.com",
         r"levels\.fyi",
+        r"reed\.co\.uk/courses/",
     ]
 ]
 
