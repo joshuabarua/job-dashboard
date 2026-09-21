@@ -94,6 +94,15 @@
         <article class="card" :class="{'dupe': job._dup_flag}">
           <div class="card-top">
             <div class="pill" :class="'pill-'+job._track_color" x-text="job.track"></div>
+            <select class="status-select" :class="'sel-'+statusKey(job.status)"
+                    :value="job.status" @change="setStatus(job, $event.target.value, $event.target)">
+              <template x-for="s in statuses" :key="s">
+                <option :value="s" x-text="s" :selected="s === job.status"></option>
+              </template>
+            </select>
+            <button class="ghost small" @click="markStarred(job)">&#9733;</button>
+            <button class="ghost small" @click="markApplied(job)">applied</button>
+            <button class="ghost small" @click="removeJob(job)">remove</button>
           </div>
           <a :href="job.url" target="_blank" rel="noopener" class="card-title" x-text="job.job_title"></a>
           <div class="card-sub" x-text="job.company"></div>
@@ -118,9 +127,12 @@
 </div>
 
 <script>
+const SUPABASE_URL = "https://cvowlyauaovtdnobdaci.supabase.co";
+const SUPABASE_KEY = "sb_publishable_LNyUShI7zEixUQWDFsLbjw_kFLA0wQM";
+
 function cmd() {
   return {
-    version: "v1.0",
+    version: "v1.1",
     tracks: [], locations: [], pipeline: [], statuses: [],
     jobs: [], visible: [],
     track: null, selStatus: null, statusAll: true, loc: "", q: "", showDupes: false, showApplied: false, sort: "date",
@@ -166,6 +178,72 @@ function cmd() {
         out.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
       }
       this.visible = out;
+    },
+
+    statusKey(s) {
+      return "new applied reviewed interview offer declined starred".split(" ")
+        .indexOf((s || "New").toLowerCase());
+    },
+
+    async dbWrite(job, method, body) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/jobs?id=eq.${job.id}`, {
+        method,
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!r.ok) throw new Error(await r.text());
+    },
+
+    refreshCounts() {
+      this.total = this.jobs.length;
+      const pipe = {};
+      for (const j of this.jobs) {
+        const s = (j.status || "New").trim();
+        pipe[s] = (pipe[s] || 0) + 1;
+      }
+      for (const p of this.pipeline) p.count = pipe[p.status] || 0;
+      for (const t of this.tracks) {
+        t.count = this.jobs.filter(j => j.track === t.track).length;
+      }
+      const locs = {};
+      for (const j of this.jobs) {
+        if (j.location) locs[j.location] = (locs[j.location] || 0) + 1;
+      }
+      this.locations = Object.entries(locs)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([location, count]) => ({ location, count }));
+    },
+
+    async setStatus(job, status, el) {
+      const prev = job.status;
+      try {
+        await this.dbWrite(job, "PATCH", { status });
+        job.status = status;
+        this.refreshCounts();
+        this.update();
+      } catch (e) {
+        if (el) el.value = prev;
+        alert("Update failed: " + e.message);
+      }
+    },
+    async markApplied(job) { await this.setStatus(job, "Applied"); },
+    async markStarred(job) { await this.setStatus(job, "Starred"); },
+
+    async removeJob(job) {
+      if (!confirm("Remove this job?")) return;
+      try {
+        await this.dbWrite(job, "DELETE");
+        this.jobs = this.jobs.filter(j => j !== job);
+        this.refreshCounts();
+        this.update();
+      } catch (e) {
+        alert("Remove failed: " + e.message);
+      }
     },
   };
 }
