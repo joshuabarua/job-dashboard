@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: job-dashboard
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_KEY_PUBLIC
+        sync: false
+      - key: WEBSEARCH_ENABLED
+        value: "0"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: LINKUP_API_KEY
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: EXA_API_KEY
+        sync: false
+      - key: PARALLEL_API_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: REED_API_KEY
+        sync: false

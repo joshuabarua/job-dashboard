@@ -1,5 +1,6 @@
 """Build static JSON + assets for GitHub Pages."""
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -46,6 +47,14 @@ def build():
     (PUBLIC / "jobs.json").write_text(json.dumps(payload), encoding="utf-8")
     (PUBLIC / "stats.json").write_text(json.dumps(stats), encoding="utf-8")
     (PUBLIC / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_KEY_PUBLIC", "")
+    if not supabase_url or not supabase_key:
+        print("[build_static] SUPABASE_URL/SUPABASE_KEY_PUBLIC not set; status updates will not work on the static site")
+    html = (BASE / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    html = html.replace("__SUPABASE_URL__", supabase_url).replace("__SUPABASE_KEY__", supabase_key)
+    (PUBLIC / "index.html").write_text(html, encoding="utf-8")
 
     shutil.copy2(BASE / "app" / "static" / "style.css", PUBLIC / "style.css")
     shutil.copy2(BASE / "app" / "static" / "favicon.svg", PUBLIC / "favicon.svg")

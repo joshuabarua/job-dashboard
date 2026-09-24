@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 *.bak
 public/*.log
+.DS_Store

@@ -1,5 +1,6 @@
 """Job Search Command Center - FastAPI application."""
 
+import os
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -8,17 +9,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import tracker, search
+from . import config, tracker, search
 from .models import StatusUpdate, CandidateAdd
 
 app = FastAPI(title="Job Search Command Center")
 
+_EXTRA_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://joshuabarua.github.io",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        *_EXTRA_ORIGINS,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -29,16 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 TRACK_COLORS = {
-    "Developer": "accent",
-    "Junior / Associate Software Engineer": "info",
-    "Frontend Engineer": "info",
-    "Product Engineer": "info",
-    "QA Automation Engineer": "info",
-    "Application Support Engineer": "success",
-    "Technical Support Engineer": "success",
-    "Sys Admin": "success",
-    "Bouldering Gyms": "info",
-    "Bar / Hospitality": "danger",
+    name: cfg.get("color", "accent") for name, cfg in config.tracks().items()
 }
 
 

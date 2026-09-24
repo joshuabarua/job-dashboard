@@ -46,12 +46,16 @@ jobs:
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           PARALLEL_API_KEY: ${{ secrets.PARALLEL_API_KEY }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          REED_API_KEY: ${{ secrets.REED_API_KEY }}
 
       - name: Build static site
         run: python scripts/build_static.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_KEY_PUBLIC: ${{ secrets.SUPABASE_KEY_PUBLIC }}
 
       - name: Commit updated data and site
         run: |

@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 load_dotenv()
 
+from . import config
+
 try:
     import requests
 except ImportError:
@@ -155,12 +157,7 @@ _ATS_SUFFIXES = (
 )
 
 # Facet slugs containing these become depth-2 extract seeds.
-SKILL_KEYWORDS = {
-    "typescript", "ts", "javascript", "react", "react native", "next",
-    "next.js", "trpc", "hono", "zustand", "tailwind", "node", "nodejs",
-    "vue", "expo", "remix", "svelte", "graphql", "prisma", "fullstack",
-    "frontend",
-}
+SKILL_KEYWORDS = config.skill_keywords()
 
 
 class _Exhausted(Exception):

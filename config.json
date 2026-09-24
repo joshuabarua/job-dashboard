@@ -1,0 +1,170 @@
+{
+  "locations": {
+    "cities": ["Berlin", "London", "Brighton"],
+    "allowed_regions": [
+      "germany", "deutschland", "uk", "u.k.", "united kingdom",
+      "great britain", "britain", "england", "scotland", "wales",
+      "northern ireland"
+    ]
+  },
+  "tracks": {
+    "Frontend Engineer": {
+      "keywords": [
+        "frontend engineer", "frontend developer", "front-end engineer",
+        "front-end developer", "frontend", "front-end", "react engineer",
+        "react developer", "typescript", "react", "vue", "next.js",
+        "nextjs", "tailwind", "react native", "react-native", "expo",
+        "zustand", "remix", "svelte", "tanstack", "redux"
+      ],
+      "remote": true,
+      "location": "Berlin (hybrid)/Remote",
+      "cv": "Frontend CV",
+      "color": "info"
+    },
+    "Product Engineer": {
+      "keywords": ["product engineer", "product developer"],
+      "remote": true,
+      "location": "Berlin (hybrid)/Remote",
+      "cv": "Fullstack/Frontend CV",
+      "color": "info"
+    },
+    "QA Automation Engineer": {
+      "keywords": [
+        "qa automation", "qa engineer", "qa", "automation engineer",
+        "automatisierung", "sdet", "test engineer", "quality assurance"
+      ],
+      "remote": true,
+      "location": "Berlin (hybrid)/Remote",
+      "cv": "QA / Test Automation CV",
+      "color": "info"
+    },
+    "Junior / Associate Software Engineer": {
+      "keywords": [
+        "junior engineer", "associate engineer", "junior software",
+        "associate software", "junior fullstack", "junior full-stack",
+        "junior developer", "associate developer", "junior", "associate"
+      ],
+      "remote": true,
+      "location": "Berlin (hybrid)/Remote",
+      "cv": "Fullstack/Frontend CV",
+      "color": "info"
+    },
+    "Application Support Engineer": {
+      "keywords": ["application support engineer", "application support"],
+      "remote": false,
+      "location": "Berlin",
+      "cv": "Application Support CV",
+      "color": "success"
+    },
+    "Technical Support Engineer": {
+      "keywords": [
+        "technical support engineer", "technical support",
+        "support engineer"
+      ],
+      "remote": false,
+      "location": "Berlin",
+      "cv": "IT Support CV",
+      "color": "success"
+    },
+    "Developer": {
+      "keywords": [
+        "software engineer", "software developer", "fullstack",
+        "full-stack", "node.js", "nodejs", "javascript", "web developer",
+        "backend", "back-end", "backend engineer", "typescript",
+        "react", "trpc", "hono", "graphql", "prisma", "express",
+        "nest.js", "nestjs", "node"
+      ],
+      "remote": true,
+      "location": "Berlin (hybrid)/Remote",
+      "cv": "Fullstack/Frontend CV",
+      "color": "accent"
+    },
+    "Sys Admin": {
+      "keywords": [
+        "system administrator", "sysadmin", "system admin", "it support",
+        "it specialist", "service desk", "helpdesk", "it helpdesk",
+        "it administrator", "network administrator", "desktop support",
+        "it technician", "2nd level support", "2nd-level support",
+        "first level support", "it operations"
+      ],
+      "remote": false,
+      "location": "Berlin",
+      "cv": "IT Support CV",
+      "color": "success"
+    },
+    "Bouldering Gyms": {
+      "keywords": [
+        "boulder", "bouldering", "climbing gym", "climb", "klettern",
+        "kletterhalle", "boulderhalle"
+      ],
+      "remote": false,
+      "location": "Berlin",
+      "cv": "Bouldering Gym CV",
+      "color": "info"
+    },
+    "Bar / Hospitality": {
+      "keywords": [
+        "bartender", "waiter", "waitress", "barista", "barkeeper",
+        "server", "servicekraft", "front of house", "restaurant",
+        "gastronomie", "horeca", "café", "bar staff"
+      ],
+      "remote": false,
+      "location": "Berlin",
+      "cv": "Hospitality / Restaurant CV",
+      "color": "danger"
+    }
+  },
+  "reject": {
+    "title": [
+      "senior", "sr.", "staff", "lead", "manager", "director",
+      "principal", "head of", "experienced", "expert", "specialist",
+      "berufserfahren", "mehrjährige", "mehrjaehrige", "fachkraft"
+    ],
+    "hours": [
+      "minijob", "teilzeit", "part-time", "part time", "parttime",
+      "<32h", "30h", "25h"
+    ],
+    "language": [
+      "c1", "c2", "german fluent", "fluent german", "deutsch fließend",
+      "verhandlungssicher", "german native", "native german",
+      "muttersprache", "deutschkenntnisse c1", "deutschkenntnisse c2",
+      "c1 deutsch", "c2 deutsch", "german c1", "german c2",
+      "german required", "deutsch erforderlich"
+    ],
+    "hosts": [
+      "linkedin.com", "reddit.com", "facebook.com", "instagram.com",
+      "x.com", "twitter.com", "tiktok.com", "youtube.com",
+      "pinterest.com", "quora.com"
+    ],
+    "dead_markers": [
+      "no longer available", "stelle ist nicht mehr",
+      "position has been filled", "expired"
+    ]
+  },
+  "sources": {
+    "arbeitnow": true,
+    "remotive": true,
+    "remoteok": true,
+    "jobicy": true,
+    "weworkremotely": true,
+    "adzuna_countries": ["de", "gb"],
+    "arbeitsagentur": true,
+    "arbeitsagentur_city": "Berlin",
+    "html_boards": true,
+    "boards": [
+      {"name": "Reed UK", "url": "https://www.reed.co.uk/jobs/developer-jobs?q=developer", "remote": true},
+      {"name": "ImpactPool Germany", "url": "https://www.impactpool.org/countries/Germany", "remote": false},
+      {"name": "EnglishJobs Berlin", "url": "https://englishjobs.de/in/berlin", "remote": false},
+      {"name": "Stepstone EU Berlin", "url": "https://www.stepstone.de/jobs/europ%C3%A4ische-union/in-berlin", "remote": false}
+    ],
+    "extract_seeds": [
+      {"url": "https://berlinstartupjobs.com/engineering/", "remote": false}
+    ]
+  },
+  "skill_keywords": [
+    "typescript", "ts", "javascript", "react", "react native", "next",
+    "next.js", "trpc", "hono", "zustand", "tailwind", "node", "nodejs",
+    "vue", "expo", "remix", "svelte", "graphql", "prisma", "fullstack",
+    "frontend"
+  ]
+}

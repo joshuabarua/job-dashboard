@@ -1,10 +1,10 @@
 # Matcher Skills, Filters, and Scoring
 
-This document describes how the job matcher decides which roles are relevant and how they are scored.
+This document describes how the job matcher decides which roles are relevant and how they are scored. All values below live in `config.json` — edit that file, not the code.
 
 ## Tracks
 
-Each track has a list of keywords, a preferred CV, and a location/remote preference.
+Each track has a list of keywords, a preferred CV, and a location/remote preference. The table reflects the shipped `config.json`.
 
 | Track | Keywords | Remote | Preferred CV | Notes |
 |---|---|---|---|---|
@@ -78,8 +78,9 @@ score = min(10, score)
 
 ## Adding or Changing Skills
 
-1. Edit `app/search.py` → `TRACKS` to add/change track keywords.
-2. Update `app/main.py` → `TRACK_COLORS` if you want a new color for a track.
-3. Update `app/tracker.py` → `TRACKS` if the track is not already listed there.
-4. Add `REJECT_*` entries in `app/search.py` for new unwanted patterns.
-5. Restart the local server or re-run the GitHub Actions workflow.
+1. Edit `config.json` → `tracks` to add/change track keywords, remote flags,
+   locations, CV labels, and sidebar colors.
+2. Edit `config.json` → `reject` for new unwanted title/hours/language/host
+   patterns, and `locations` for accepted cities and blocked remote regions.
+3. Edit `config.json` → `sources` to toggle job sources or add boards.
+4. Restart the local server or re-run the GitHub Actions workflow.

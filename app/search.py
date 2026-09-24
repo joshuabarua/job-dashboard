@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urljoin, urlparse
 
+from . import config
 from . import tracker
 from . import websearch
 
@@ -23,122 +24,16 @@ except ImportError:
     requests = None
     BeautifulSoup = None
 
-TRACKS = {
-    "Frontend Engineer": {
-        "keywords": [
-            "frontend engineer", "frontend developer", "front-end engineer",
-            "front-end developer", "frontend", "front-end", "react engineer",
-            "react developer", "typescript", "react", "vue", "next.js",
-            "nextjs", "tailwind", "react native", "react-native", "expo",
-            "zustand", "remix", "svelte", "tanstack", "redux",
-        ],
-        "remote": True,
-        "location": "Berlin (hybrid)/Remote",
-        "cv": "Frontend CV",
-    },
-    "Product Engineer": {
-        "keywords": [
-            "product engineer", "product developer",
-        ],
-        "remote": True,
-        "location": "Berlin (hybrid)/Remote",
-        "cv": "Fullstack/Frontend CV",
-    },
-    "QA Automation Engineer": {
-        "keywords": [
-            "qa automation", "qa engineer", "qa", "automation engineer",
-            "automatisierung", "sdet", "test engineer", "quality assurance",
-        ],
-        "remote": True,
-        "location": "Berlin (hybrid)/Remote",
-        "cv": "QA / Test Automation CV",
-    },
-    "Junior / Associate Software Engineer": {
-        "keywords": [
-            "junior engineer", "associate engineer", "junior software",
-            "associate software", "junior fullstack", "junior full-stack",
-            "junior developer", "associate developer", "junior",
-            "associate",
-        ],
-        "remote": True,
-        "location": "Berlin (hybrid)/Remote",
-        "cv": "Fullstack/Frontend CV",
-    },
-    "Application Support Engineer": {
-        "keywords": [
-            "application support engineer", "application support",
-        ],
-        "remote": False,
-        "location": "Berlin",
-        "cv": "Application Support CV",
-    },
-    "Technical Support Engineer": {
-        "keywords": [
-            "technical support engineer", "technical support",
-            "support engineer",
-        ],
-        "remote": False,
-        "location": "Berlin",
-        "cv": "IT Support CV",
-    },
-    "Developer": {
-        "keywords": [
-            "software engineer", "software developer", "fullstack",
-            "full-stack", "node.js", "nodejs", "javascript", "web developer",
-            "backend", "back-end", "backend engineer", "typescript",
-            "react", "trpc", "hono", "graphql", "prisma", "express",
-            "nest.js", "nestjs", "node",
-        ],
-        "remote": True,
-        "location": "Berlin (hybrid)/Remote",
-        "cv": "Fullstack/Frontend CV",
-    },
-    "Sys Admin": {
-        "keywords": [
-            "system administrator", "sysadmin", "system admin", "it support",
-            "it specialist", "service desk", "helpdesk", "it helpdesk",
-            "it administrator", "network administrator",
-            "desktop support", "it technician", "2nd level support",
-            "2nd-level support", "first level support", "it operations",
-        ],
-        "remote": False,
-        "location": "Berlin",
-        "cv": "IT Support CV",
-    },
-    "Bouldering Gyms": {
-        "keywords": [
-            "boulder", "bouldering", "climbing gym", "climb", "klettern",
-            "kletterhalle", "boulderhalle",
-        ],
-        "remote": False,
-        "location": "Berlin",
-        "cv": "Bouldering Gym CV",
-    },
-    "Bar / Hospitality": {
-        "keywords": [
-            "bartender", "waiter", "waitress", "barista", "barkeeper",
-            "server", "servicekraft", "front of house", "restaurant",
-            "gastronomie", "hoReCa", "caf\u00e9", "bar staff",
-        ],
-        "remote": False,
-        "location": "Berlin",
-        "cv": "Hospitality / Restaurant CV",
-    },
-}
+TRACKS = config.tracks()
 
 # Level modifiers only count when a real role keyword is present in the title.
 MODIFIER_KEYWORDS = {"junior", "associate"}
 
-REJECT_TITLE = ["senior", "sr.", "staff", "lead", "manager", "director", "principal", "head of",
-                "experienced", "expert", "specialist", "berufserfahren", "mehrj\u00e4hrige",
-                "mehrjaehrige", "fachkraft"]
-REJECT_HOURS = ["minijob", "teilzeit", "part-time", "part time", "parttime", "<32h", "30h", "25h"]
-REJECT_LANG = ["c1", "c2", "german fluent", "fluent german", "deutsch flie\u00dfend",
-               "verhandlungssicher", "german native", "native german", "muttersprache",
-               "deutschkenntnisse c1", "deutschkenntnisse c2", "c1 deutsch", "c2 deutsch",
-               "german c1", "german c2", "german required", "deutsch erforderlich"]
+REJECT_TITLE = config.reject("title")
+REJECT_HOURS = config.reject("hours")
+REJECT_LANG = config.reject("language")
 
-REJECT_HOSTS = {"linkedin.com"}
+REJECT_HOSTS = set(config.reject("hosts"))
 
 REJECT_URL_PATTERNS = [
     re.compile(p, re.I) for p in [
@@ -257,6 +152,151 @@ def _fetch_remotive():
         }
 
 
+def _fetch_remoteok():
+    data = _get_json("https://remoteok.com/api")
+    if not isinstance(data, list):
+        return
+    for j in data:
+        if not isinstance(j, dict) or "position" not in j:
+            continue
+        yield {
+            "job_title": j.get("position", ""),
+            "company": j.get("company", ""),
+            "location": j.get("location") or "Remote",
+            "url": j.get("url") or j.get("apply_url") or "",
+            "tags": j.get("tags") or [],
+            "remote": True,
+        }
+
+
+def _fetch_jobicy():
+    data = _get_json("https://jobicy.com/api/v2/remote-jobs?count=50")
+    for j in data.get("jobs", []):
+        yield {
+            "job_title": j.get("jobTitle", ""),
+            "company": j.get("companyName", ""),
+            "location": j.get("jobGeo") or "Remote",
+            "url": j.get("url", ""),
+            "tags": [j.get("jobIndustry")] if j.get("jobIndustry") else [],
+            "remote": True,
+        }
+
+
+WWR_FEEDS = [
+    "https://weworkremotely.com/categories/remote-programming-jobs.rss",
+    "https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss",
+    "https://weworkremotely.com/categories/remote-customer-support-jobs.rss",
+]
+
+
+def _fetch_wwr():
+    import xml.etree.ElementTree as ET
+    for feed in WWR_FEEDS:
+        try:
+            req = urllib.request.Request(feed, headers={"User-Agent": "Mozilla/5.0 (JobCommandCenter)"})
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                root = ET.fromstring(resp.read())
+        except Exception as e:
+            print(f"[search] wwr feed failed {feed}: {e}", file=sys.stderr)
+            continue
+        for item in root.iter("item"):
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            region = (item.findtext("region") or "").strip()
+            if not title or not link:
+                continue
+            company, _, role = title.partition(":")
+            yield {
+                "job_title": (role or title).strip(),
+                "company": company.strip(),
+                "location": region or "Remote",
+                "url": link,
+                "tags": [],
+                "remote": True,
+            }
+
+
+def _track_keywords():
+    kws = []
+    for cfg in TRACKS.values():
+        kw = cfg["keywords"][0]
+        if kw not in kws:
+            kws.append(kw)
+    return kws
+
+
+def _fetch_adzuna():
+    app_id = (os.environ.get("ADZUNA_APP_ID") or "").strip()
+    app_key = (os.environ.get("ADZUNA_APP_KEY") or "").strip()
+    if not app_id or not app_key:
+        return
+    if requests is None:
+        print("[search] requests not installed; skipping adzuna", file=sys.stderr)
+        return
+    countries = config.sources().get("adzuna_countries") or []
+    for country in countries:
+        for kw in _track_keywords():
+            try:
+                resp = requests.get(
+                    f"https://api.adzuna.com/v1/api/jobs/{country}/search/1",
+                    params={
+                        "app_id": app_id, "app_key": app_key,
+                        "results_per_page": 25, "what": kw,
+                        "max_days_old": 14,
+                    },
+                    timeout=TIMEOUT)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                print(f"[search] adzuna {country} '{kw}' failed: {e}", file=sys.stderr)
+                continue
+            for j in data.get("results", []):
+                title = j.get("title", "")
+                loc = (j.get("location") or {}).get("display_name", "")
+                remote = bool(re.search(
+                    r"\bremote\b",
+                    f"{title} {loc} {j.get('description', '')}", re.I))
+                yield {
+                    "job_title": re.sub(r"<[^>]+>", "", title),
+                    "company": (j.get("company") or {}).get("display_name", ""),
+                    "location": loc or country.upper(),
+                    "url": j.get("redirect_url", ""),
+                    "tags": [],
+                    "remote": remote,
+                }
+
+
+def _fetch_reed():
+    key = (os.environ.get("REED_API_KEY") or "").strip()
+    if not key:
+        return
+    if requests is None:
+        print("[search] requests not installed; skipping reed", file=sys.stderr)
+        return
+    for kw in _track_keywords():
+        try:
+            resp = requests.get(
+                "https://www.reed.co.uk/api/1.0/search",
+                params={"keywords": kw, "resultsToTake": 25},
+                auth=(key, ""), timeout=TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"[search] reed '{kw}' failed: {e}", file=sys.stderr)
+            continue
+        for j in data.get("results", []):
+            loc = j.get("locationName", "")
+            title = j.get("jobTitle", "")
+            yield {
+                "job_title": title,
+                "company": j.get("employerName", ""),
+                "location": loc,
+                "url": j.get("jobUrl", ""),
+                "tags": [],
+                "remote": "remote" in f"{title} {loc}".lower(),
+            }
+
+
 ARBEITSAGENTUR_KEY = os.environ.get("ARBEITSAGENTUR_API_KEY") or "jobboerse-jobsuche"
 
 
@@ -266,6 +306,11 @@ def _fetch_arbeitsagentur():
     The API uses a public static client id (X-API-Key: jobboerse-jobsuche),
     documented on bund.dev — no registration or secret needed.
     """
+    if not config.source_enabled("arbeitsagentur"):
+        return
+    city = config.sources().get("arbeitsagentur_city") or (config.cities()[0] if config.cities() else "")
+    if not city:
+        return
     if requests is None:
         print("[search] requests not installed; skipping arbeitsagentur", file=sys.stderr)
         return
@@ -280,7 +325,7 @@ def _fetch_arbeitsagentur():
             resp = requests.get(
                 "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs",
                 headers={"X-API-Key": ARBEITSAGENTUR_KEY},
-                params={"was": kw, "wo": "Berlin", "size": 25},
+                params={"was": kw, "wo": city, "size": 25},
                 timeout=TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
@@ -309,7 +354,7 @@ def _fetch_arbeitsagentur():
             yield {
                 "job_title": title,
                 "company": employer or "Arbeitsagentur",
-                "location": place or "Berlin",
+                "location": place or city,
                 "url": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
                 "tags": [],
                 "remote": False,
@@ -318,25 +363,22 @@ def _fetch_arbeitsagentur():
 
 # --- Additional HTML boards (user-provided) --------------------------------
 
-ADDITIONAL_BOARDS = [
-    ("Reed UK", "https://www.reed.co.uk/jobs/developer-jobs?q=developer", True),
-    ("ImpactPool Germany", "https://www.impactpool.org/countries/Germany", False),
-    ("EnglishJobs Berlin", "https://englishjobs.de/in/berlin", False),
-    ("Stepstone EU Berlin", "https://www.stepstone.de/jobs/europ%C3%A4ische-union/in-berlin", False),
-]
+ADDITIONAL_BOARDS = config.sources().get("boards") or []
 
-# Listing pages always mined by the extract stage on metered runs (url, remote).
-EXTRACT_SEEDS = [
-    ("https://berlinstartupjobs.com/engineering/", False),
-]
+EXTRACT_SEEDS = config.sources().get("extract_seeds") or []
+
+_PRIMARY_CITY = config.cities()[0] if config.cities() else ""
 
 
 def _fetch_html_boards():
     """Scrape user-provided job board listing pages for candidate links."""
+    if not config.source_enabled("html_boards"):
+        return
     if requests is None or BeautifulSoup is None:
         print("[search] requests+beautifulsoup4 not installed; skipping HTML boards", file=sys.stderr)
         return
-    for name, base_url, remote in ADDITIONAL_BOARDS:
+    for board in ADDITIONAL_BOARDS:
+        name, base_url, remote = board["name"], board["url"], board["remote"]
         try:
             resp = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0 (JobCommandCenter)"}, timeout=TIMEOUT)
             resp.raise_for_status()
@@ -359,7 +401,7 @@ def _fetch_html_boards():
                 yield {
                     "job_title": title,
                     "company": name,
-                    "location": "Remote" if remote else "Berlin",
+                    "location": "Remote" if remote else _PRIMARY_CITY,
                     "url": full,
                     "tags": [],
                     "remote": remote,
@@ -410,7 +452,10 @@ def _fetch_websearch():
             if len(cfg["keywords"]) > 1:
                 queries.append(f"{kw1} {cfg['keywords'][1]} remote jobs")
         else:
-            queries = [f"{kw1} jobs Berlin", f"{kw1} stellenanzeigen Berlin"]
+            city = cfg.get("location") or _PRIMARY_CITY
+            queries = [f"{kw1} jobs {city}"]
+            if len(cfg["keywords"]) > 1:
+                queries.append(f"{kw1} {cfg['keywords'][1]} jobs {city}")
         for query in queries:
             try:
                 results = websearch.search(query, limit=10)
@@ -421,7 +466,7 @@ def _fetch_websearch():
                 yield {
                     "job_title": r["title"],
                     "company": _company_from_url(r["url"]),
-                    "location": "Remote" if cfg["remote"] else "Berlin",
+                    "location": "Remote" if cfg["remote"] else cfg.get("location", _PRIMARY_CITY),
                     "url": r["url"],
                     "tags": [r["snippet"]] if r.get("snippet") else [],
                     "remote": cfg["remote"],
@@ -484,27 +529,17 @@ def _rejected(job):
     return None
 
 
-_OK_CITIES = ("berlin", "london", "brighton")
-_REMOTE_WORDS = ("remote", "anywhere", "work from home", "home office",
-                 "homeoffice", "wfh", "telecommut")
-_REMOTE_BLOCK = re.compile(
-    r"\b(usa?|u\.s\.?a?|united states|americas?|north america|canada|latam|"
-    r"apac|anz|australia|new zealand|india|asia|philippines|brazil|mexico|"
-    r"africa|south america)\b", re.I)
+_OK_CITIES = tuple(config.cities_lower())
+_OK_GEO = config.allowed_geo_pattern()
 
 
 def _location_ok(job, track_cfg):
-    """Acceptable: Berlin/London/Brighton on-site, or remote that isn't
-    restricted to a non-UK/EU region (covers 'remote', 'UK-wide remote',
-    'Germany-wide remote', 'EMEA remote')."""
+    """Strict: only jobs whose location names an allowed geo — configured
+    cities plus allowed_regions (Germany, UK). Applies to on-site and
+    remote alike: 'Remote - Germany'/'Remote - UK' pass, unrestricted or
+    other-country remote does not."""
     loc = _norm(job["location"])
-    if any(c in loc for c in _OK_CITIES):
-        return True
-    if not track_cfg["remote"]:
-        return False
-    if job.get("remote") or any(w in loc for w in _REMOTE_WORDS):
-        return not _REMOTE_BLOCK.search(loc)
-    return False
+    return bool(_OK_GEO and _OK_GEO.search(loc))
 
 
 def _score(hits, job, track_cfg):
@@ -574,7 +609,7 @@ def _mined_candidate(link, tracks, seen_urls, declined=None):
         return None
     for t in tracks:
         cfg = TRACKS[t]
-        job = dict(base, location="Remote" if cfg["remote"] else "Berlin",
+        job = dict(base, location="Remote" if cfg["remote"] else cfg.get("location", _PRIMARY_CITY),
                    remote=cfg["remote"])
         if not _location_ok(job, cfg):
             continue
@@ -609,7 +644,7 @@ def _extract_stage(listing_urls, tracks, seen_urls, declined=None):
     seen_pages = set()
     host_counts = {}
     pages = 0
-    queue = [u for u, _ in EXTRACT_SEEDS] + list(dict.fromkeys(listing_urls))
+    queue = [s["url"] for s in EXTRACT_SEEDS] + list(dict.fromkeys(listing_urls))
     for depth in (1, 2):
         seeds = []
         for url in queue:
@@ -644,9 +679,8 @@ def _extract_stage(listing_urls, tracks, seen_urls, declined=None):
 
 # --- Verify stage: extract top candidates' pages, drop dead/ineligible -----
 
-_VERIFY_DEAD_MARKERS = [
-    "no longer available", "stelle ist nicht mehr",
-    "position has been filled", "expired",
+_VERIFY_DEAD_MARKERS = config.reject("dead_markers") or [
+    "no longer available", "position has been filled", "expired",
 ]
 
 
@@ -701,18 +735,76 @@ def _verify_candidates(candidates):
     return out
 
 
+def _check_links(candidates):
+    """HEAD-check top candidates; drop dead links (404/410).
+
+    Bounded by LINK_CHECK_MAX (default 25) over the highest-scored
+    candidates. Blocks on 403/405 get a GET fallback; any non-404 result or
+    network failure keeps the candidate.
+    """
+    if requests is None:
+        return candidates
+    limit = int(os.environ.get("LINK_CHECK_MAX", "25"))
+    if limit <= 0:
+        return candidates
+    ranked = sorted(range(len(candidates)),
+                    key=lambda i: -candidates[i].get("match_score", 0))[:limit]
+    checked = set(ranked)
+    out = []
+    dropped = 0
+    for i, c in enumerate(candidates):
+        if i not in checked:
+            out.append(c)
+            continue
+        url = c["url"]
+        try:
+            r = requests.head(
+                url, allow_redirects=True, timeout=8,
+                headers={"User-Agent": "Mozilla/5.0 (JobCommandCenter)"})
+            code = r.status_code
+            if code in (403, 405, 501):
+                r = requests.get(
+                    url, stream=True, timeout=8,
+                    headers={"User-Agent": "Mozilla/5.0 (JobCommandCenter)"})
+                code = r.status_code
+        except Exception:
+            out.append(c)
+            continue
+        if code in (404, 410):
+            print(f"[search] dead link dropped {url}: HTTP {code}", file=sys.stderr)
+            dropped += 1
+            continue
+        out.append(c)
+    if dropped:
+        print(f"[search] link check dropped {dropped} dead candidate(s)", file=sys.stderr)
+    return out
+
+
 def collect(track=None):
     """Search all sources, apply rules, return scored non-duplicate candidates."""
     candidates = []
-    sources = [_fetch_arbeitnow, _fetch_remotive, _fetch_html_boards]
+    remote_only = {_fetch_remotive, _fetch_remoteok, _fetch_jobicy, _fetch_wwr}
+    sources = [
+        f for key, f in [
+            ("arbeitnow", _fetch_arbeitnow),
+            ("remotive", _fetch_remotive),
+            ("remoteok", _fetch_remoteok),
+            ("jobicy", _fetch_jobicy),
+            ("weworkremotely", _fetch_wwr),
+            ("html_boards", _fetch_html_boards),
+        ]
+        if config.source_enabled(key)
+    ]
     if track:
         tracks = [track]
-        # remotive only serves remote gigs; restrict sources for on-site tracks
+        # remote-only sources can't serve on-site tracks
         if track in TRACKS and not TRACKS[track].get("remote"):
-            sources = [_fetch_arbeitnow, _fetch_html_boards]
+            sources = [f for f in sources if f not in remote_only]
     else:
         tracks = list(TRACKS)
     sources.append(_fetch_arbeitsagentur)
+    sources.append(_fetch_adzuna)
+    sources.append(_fetch_reed)
     if _websearch_enabled():
         sources.append(_fetch_websearch)
 
@@ -761,6 +853,8 @@ def collect(track=None):
         candidates.extend(_extract_stage(listing_urls, tracks, seen_urls,
                                          declined))
         candidates = _verify_candidates(candidates)
+
+    candidates = _check_links(candidates)
 
     # drop duplicates against tracker CSV
     final = []

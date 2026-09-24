@@ -7,23 +7,13 @@ import re
 from datetime import date
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+import app.config as config
 import app.db as db
 import app.websearch as websearch
 
 WORKFLOW = ["New", "Applied", "Reviewed", "Interview", "Offer", "Declined", "Starred"]
 
-TRACKS = [
-    "Developer",
-    "Junior / Associate Software Engineer",
-    "Frontend Engineer",
-    "Product Engineer",
-    "QA Automation Engineer",
-    "Application Support Engineer",
-    "Technical Support Engineer",
-    "Sys Admin",
-    "Bouldering Gyms",
-    "Bar / Hospitality",
-]
+TRACKS = list(config.tracks().keys())
 
 
 _FIELDNAMES = [
@@ -283,10 +273,10 @@ def _norm_score(value):
 
 
 def _normalize_location(loc):
-    """Collapse Berlin/Remote variants into canonical groups."""
+    """Collapse city/remote variants into canonical groups."""
     raw = (loc or "").lower().strip()
     has_remote = "remote" in raw or "hybrid" in raw
-    for city in ("Berlin", "London", "Brighton"):
+    for city in config.cities():
         if city.lower() in raw:
             return f"{city} / Remote" if has_remote else city
     if has_remote:
