@@ -514,8 +514,8 @@ def _rejected(job):
         if k in t or k in tags:
             return f"Language: {k}"
     for k in REJECT_SKILLS:
-        if re.search(rf"\b{re.escape(_norm(k))}\b", t) or \
-                re.search(rf"\b{re.escape(_norm(k))}\b", tags):
+        pat = rf"(?<![a-z0-9]){re.escape(_norm(k))}(?![a-z0-9])"
+        if re.search(pat, t) or re.search(pat, tags):
             return f"Skill: {k}"
     tc = t + " " + _norm(job.get("company", ""))
     for k in REJECT_TEXT:
