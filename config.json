@@ -132,7 +132,7 @@
       "c1 deutsch", "c2 deutsch", "german c1", "german c2",
       "german required", "deutsch erforderlich"
     ],
-    "skills": ["java"],
+    "skills": ["java", "golang", "go"],
     "text": [
       "boulder valley", "bvsd", "boulder county", "city of boulder",
       "boulder colorado", "boulder co", "university of colorado",
