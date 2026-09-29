@@ -33,6 +33,7 @@ REJECT_TITLE = config.reject("title")
 REJECT_HOURS = config.reject("hours")
 REJECT_LANG = config.reject("language")
 REJECT_SKILLS = config.reject("skills")
+REJECT_TEXT = config.reject("text")
 
 REJECT_HOSTS = set(config.reject("hosts"))
 
@@ -516,6 +517,13 @@ def _rejected(job):
         if re.search(rf"\b{re.escape(_norm(k))}\b", t) or \
                 re.search(rf"\b{re.escape(_norm(k))}\b", tags):
             return f"Skill: {k}"
+    tc = t + " " + _norm(job.get("company", ""))
+    for k in REJECT_TEXT:
+        if _norm(k) in tc:
+            return f"Text: {k}"
+    if re.search(r"\bboulder\b", tc) and not re.search(
+            r"boulder(ing|halle| gym|gym|welt)|climb|kletter", tc):
+        return "Boulder (place, not climbing)"
     url = (job.get("url") or "").lower()
     for host in REJECT_HOSTS:
         if host in url:

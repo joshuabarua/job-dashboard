@@ -94,8 +94,9 @@
     },
     "Bouldering Gyms": {
       "keywords": [
-        "boulder", "bouldering", "climbing gym", "climb", "klettern",
-        "kletterhalle", "boulderhalle"
+        "bouldering", "bouldering gym", "climbing gym", "climbing",
+        "rock climbing", "klettern", "kletterhalle", "boulderhalle",
+        "boulder gym", "bouldergym", "boulderwelt"
       ],
       "remote": false,
       "location": "Berlin",
@@ -132,6 +133,11 @@
       "german required", "deutsch erforderlich"
     ],
     "skills": ["java"],
+    "text": [
+      "boulder valley", "bvsd", "boulder county", "city of boulder",
+      "boulder colorado", "boulder co", "university of colorado",
+      "cu boulder", "boulder community", "boulder school", "colorado"
+    ],
     "hosts": [
       "linkedin.com", "reddit.com", "facebook.com", "instagram.com",
       "x.com", "twitter.com", "tiktok.com", "youtube.com",
