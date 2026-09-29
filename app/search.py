@@ -97,6 +97,15 @@ REJECT_TITLE_PATTERNS = [
         r"\bjobs\s*$",
         r"search.*jobs",
         r"job search",
+        r"^(what|how|why|where|when|which|who)\b",
+        r"\bjob description\b",
+        r"skills and qualifications",
+        r"\binterview questions?\b",
+        r"\bresume\b",
+        r"\bcover letter\b",
+        r"\bcareer (guide|path|advice|change)\b",
+        r"\bbecome a\b",
+        r"\bfaq\b",
     ]
 ]
 
