@@ -32,6 +32,7 @@ MODIFIER_KEYWORDS = {"junior", "associate"}
 REJECT_TITLE = config.reject("title")
 REJECT_HOURS = config.reject("hours")
 REJECT_LANG = config.reject("language")
+REJECT_SKILLS = config.reject("skills")
 
 REJECT_HOSTS = set(config.reject("hosts"))
 
@@ -511,6 +512,10 @@ def _rejected(job):
     for k in REJECT_LANG:
         if k in t or k in tags:
             return f"Language: {k}"
+    for k in REJECT_SKILLS:
+        if re.search(rf"\b{re.escape(_norm(k))}\b", t) or \
+                re.search(rf"\b{re.escape(_norm(k))}\b", tags):
+            return f"Skill: {k}"
     url = (job.get("url") or "").lower()
     for host in REJECT_HOSTS:
         if host in url:

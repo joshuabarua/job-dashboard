@@ -49,6 +49,7 @@ Everything personal lives in `config.json`. No code edits needed.
     "title":    ["senior", "lead", "manager"],   // drop if in job title
     "hours":    ["part-time", "minijob"],        // drop if in job title
     "language": ["german required", "c1"],       // drop if in title/tags/page body
+    "skills":   ["java"],                        // drop if in title/tags (word-boundary: won't hit "javascript")
     "hosts":    ["linkedin.com"],                // drop results from these hosts
     "dead_markers": ["no longer available"]      // drop when the posting page says this
   },
