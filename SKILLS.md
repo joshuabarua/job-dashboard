@@ -14,6 +14,8 @@ Each track has a list of keywords, a preferred CV, and a location/remote prefere
 | Junior / Associate Software Engineer | `junior`, `associate` + role keywords | Yes | Fullstack/Frontend CV | Entry-level / early-career roles |
 | Application Support Engineer | `application support` | No | Application Support CV | On-site Berlin |
 | Technical Support Engineer | `technical support`, `support engineer` | No | IT Support CV | On-site Berlin |
+| Graduate Technology Consultant | `associate consultant`, `graduate technology consultant`, `graduate consultant`, `junior/associate technical consultant`, `technology consulting graduate` | Yes | Technical Consulting CV | Exact consulting-graduate phrases only; placed before Developer so they win over broad dev matches |
+| IT Security Trainee | `it security trainee`, `cybersecurity trainee`, `graduate cybersecurity`, `junior security analyst`, `security graduate programme` | Yes | IT Security / Technical Consulting CV | Exact security-trainee/graduate phrases only; no bare `security`/`trainee` terms |
 | Developer | `software engineer`, `fullstack`, `javascript`, `typescript`, `react`, `nodejs`, `node`, `backend`, `trpc`, `hono`, `graphql`, `prisma`, `express`, `nestjs` | Yes | Fullstack/Frontend CV | Generalist fullstack/dev roles |
 | Sys Admin | `system administrator`, `sysadmin`, `it support`, `helpdesk`, `network` | No | IT Support CV | On-site Berlin |
 | Bouldering Gyms | `boulder`, `bouldering`, `climbing gym`, `klettern` | No | Bouldering Gym CV | On-site Berlin |

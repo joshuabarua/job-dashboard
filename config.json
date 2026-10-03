@@ -86,6 +86,37 @@
       "cv": "IT Support CV",
       "color": "success"
     },
+    "Graduate Technology Consultant": {
+      "keywords": [
+        "associate consultant", "entry-level technology consultant",
+        "entry level technology consultant", "graduate technology consultant",
+        "graduate consultant", "junior technology consultant",
+        "junior technical consultant", "associate technical consultant",
+        "associate implementation consultant", "graduate implementation consultant",
+        "consultant development program", "technology consulting graduate",
+        "technical consulting graduate"
+      ],
+      "remote": true,
+      "location": "Berlin / UK / Remote",
+      "cv": "Technical Consulting CV",
+      "color": "accent"
+    },
+    "IT Security Trainee": {
+      "keywords": [
+        "it security trainee", "trainee it security",
+        "information technology security trainee",
+        "trainee information technology security", "cybersecurity trainee",
+        "cyber security trainee", "information security trainee",
+        "graduate cybersecurity", "graduate cyber security",
+        "cybersecurity graduate", "cyber security graduate",
+        "junior security analyst", "graduate security analyst",
+        "security graduate programme", "security graduate program"
+      ],
+      "remote": true,
+      "location": "Berlin / UK / Remote",
+      "cv": "IT Security / Technical Consulting CV",
+      "color": "success"
+    },
     "Developer": {
       "keywords": [
         "software engineer", "software developer", "fullstack",

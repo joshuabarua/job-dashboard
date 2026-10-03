@@ -399,6 +399,60 @@ class TestCollectWithReport(unittest.TestCase):
             self.assertIn("reed", names)
 
 
+class TestNewTracks(unittest.TestCase):
+    def first_track(self, title, location="Berlin", remote=False):
+        j = job(title=title, location=location, remote=remote)
+        if jobsearch._rejected(j):
+            return None
+        for name, cfg in jobsearch.TRACKS.items():
+            if not jobsearch._location_ok(j, cfg):
+                continue
+            if jobsearch._matches(j, cfg):
+                return name
+        return None
+
+    def test_graduate_consultant_track(self):
+        self.assertEqual(
+            self.first_track(
+                "Associate Consultant - Entry-Level Technology Consulting"),
+            "Graduate Technology Consultant")
+
+    def test_security_trainee_track(self):
+        self.assertEqual(
+            self.first_track(
+                "Trainee Information Technology Security (m/w/d) "
+                "ab 01.04.2027"),
+            "IT Security Trainee")
+        self.assertEqual(
+            self.first_track("Graduate Cybersecurity Analyst"),
+            "IT Security Trainee")
+
+    def test_senior_consultant_rejected(self):
+        j = job(title="Senior Technology Consultant", location="Berlin")
+        self.assertIsNotNone(jobsearch._rejected(j))
+        self.assertIsNone(self.first_track("Senior Technology Consultant"))
+
+    def test_generic_titles_no_match(self):
+        for title in ["Management Consultant", "Security Guard"]:
+            self.assertNotIn(
+                self.first_track(title),
+                ("Graduate Technology Consultant", "IT Security Trainee"))
+
+    def test_geo_remote_tracks(self):
+        for track in ("Graduate Technology Consultant",
+                      "IT Security Trainee"):
+            cfg = jobsearch.TRACKS[track]
+            self.assertTrue(cfg["remote"])
+            self.assertTrue(jobsearch._location_ok(
+                job(location="Berlin"), cfg), track)
+            for loc in ["Remote - Germany", "Remote - UK"]:
+                self.assertTrue(jobsearch._location_ok(
+                    job(location=loc, remote=True), cfg), loc)
+            for loc in ["Remote - US", "Remote - Canada"]:
+                self.assertFalse(jobsearch._location_ok(
+                    job(location=loc, remote=True), cfg), loc)
+
+
 class TestDbFetchAll(unittest.TestCase):
     def test_fetch_error_raises(self):
         class _Boom:
