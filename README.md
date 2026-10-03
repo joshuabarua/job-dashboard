@@ -33,8 +33,17 @@ Everything personal lives in `config.json`. No code edits needed.
 ```jsonc
 {
   "locations": {
-    "cities": ["Berlin", "London"],        // cities you accept (on-site or remote)
-    "allowed_regions": ["germany", "uk"]   // broader geos that also pass
+    "cities": ["Berlin", "London"],        // display/normalization cities
+    "geo_groups": [                        // the only geo allowlist
+      {"label": "Berlin", "terms": ["berlin"],
+       "onsite": true, "remote": true},
+      {"label": "Germany", "terms": ["germany", "deutschland"],
+       "onsite": false, "remote": true},
+      {"label": "United Kingdom",
+       "terms": ["uk", "united kingdom", "england", "scotland", "wales",
+                 "london", "manchester", "edinburgh"],
+       "onsite": true, "remote": true}
+    ]
   },
   "tracks": {
     "Frontend Engineer": {
@@ -65,10 +74,12 @@ Everything personal lives in `config.json`. No code edits needed.
     "arbeitsagentur_city": "Berlin",
     "html_boards": true,          // scrape the listing pages below
     "boards": [
-      {"name": "My Board", "url": "https://example.com/jobs", "remote": false}
+      {"name": "My Board", "url": "https://example.com/jobs",
+       "location": "Berlin", "remote": false}
     ],
     "extract_seeds": [
-      {"url": "https://berlinstartupjobs.com/engineering/", "remote": false}
+      {"url": "https://berlinstartupjobs.com/engineering/",
+       "location": "Berlin", "remote": false}
     ]
   },
   "skill_keywords": ["typescript", "react"]  // facet pages worth following on job boards
@@ -78,8 +89,14 @@ Everything personal lives in `config.json`. No code edits needed.
 Tips:
 
 - `tracks` order = sidebar order in the dashboard. First matching track wins.
-- `remote: false` tracks get `{keyword} jobs {location}` web queries; remote
-  tracks get `{keyword} remote jobs`.
+- `geo_groups` is the geo allowlist: a group passes on-site jobs when
+  `onsite: true`, remote jobs when `remote: true`. Web queries run once per
+  track per enabled group label — `{keyword} remote jobs {label}` for remote
+  tracks, `{keyword} jobs {label}` for on-site tracks. **No track or query
+  location is ever copied into a result** — a job's location must come from
+  evidence in the job's own location/title/snippet, and its board/seed scope.
+- Boards and extract seeds declare their truthful scope (`location`,
+  `remote`); scraped/mined links inherit it and must still pass geo matching.
 - Delete tracks you don't need; add as many as you like.
 - Non-Germany users: set `"arbeitsagentur": false` and clean the German terms
   out of `reject`.
@@ -142,13 +159,43 @@ set this if bund.dev issues you a dedicated key.
 
 ### 4d. Quality filters that always run
 
-- Location is a **strict allowlist**: a job's location must name a
-  configured city or `allowed_regions` entry. Applies to on-site and remote
-  alike — "Remote – Germany"/"Remote – UK" pass; worldwide, Europe-wide, or
-  other-country remote does not.
+- Location needs **evidence**: a job must name a `geo_groups` term in its own
+  location/title/tags, scoped to the group's mode. On-site Munich fails
+  (Germany is remote-only); "Remote – Germany"/"Remote – UK" pass;
+  worldwide/Europe-wide/unspecified remote fails. No track, board, or query
+  location is ever fabricated into a result.
 - Top candidates get a link check (`LINK_CHECK_MAX`, default 25): HEAD then
   GET on bot-blocks; 404/410 responses are dropped so dead postings never
   reach the board.
+
+### 4e. Run report & troubleshooting
+
+`scripts/run_search.py` prints a JSON report before adding candidates:
+
+```json
+{"accepted": {"arbeitnow": 12}, "errors": {},
+ "fetched": {"arbeitnow": 400, "remotive": 30},
+ "rejected": {"Location": 350, "No track match": 30, "Seniority: senior": 8}}
+```
+
+- `fetched` — jobs seen per source adapter (HTML boards count as
+  `html:<board name>`), before filtering.
+- `rejected` — jobs dropped per reason (`Location`, `No track match`,
+  `Duplicate URL`, `Declined employer`, or a filter reason).
+- `accepted` — pipeline-accepted per source, counted **before** tracker
+  duplicate marking; mined/extract candidates count under their scope's
+  source.
+- `errors` — adapter failures by source name. If every adapter raised
+  **before yielding any row**, the run exits nonzero with
+  `RuntimeError: all job sources failed`.
+
+Troubleshooting: mostly `Location` rejects → the job's own text names no
+allowed geo (expected — false negatives are chosen over geo leaks). Check a
+card's `why_fit` for `source: <name>` to see where a candidate came from.
+Unique candidates always sort before duplicates, so the 40-candidate cap
+cannot crowd out fresh roles. Optional adapters without API keys (Adzuna,
+Reed) are omitted from the run entirely — absent rows in the report mean
+the source was skipped, not that it failed.
 
 ## 5. Hosting
 

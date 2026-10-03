@@ -54,9 +54,11 @@ When a tracker row has status `Declined`, its company name, employer-specific UR
 ## Search Pipeline Details
 
 - **Canonical URLs**: candidate and tracker URLs are normalized before dedupe (lowercase host, no `www.`, no fragment, no trailing slash, `utm_*` and known tracking params dropped; meaningful params like `?id=` kept). The canonical form is stored in the CSV.
-- **Web search** (`WEBSEARCH_ENABLED=1` only): ~2 queries per track — `{kw1} remote jobs` + `{kw1} {kw2} remote jobs` for remote tracks, `{kw1} jobs Berlin` + `{kw1} stellenanzeigen Berlin` for Berlin tracks. Providers add freshness hints where supported (serper/firecrawl `tbs=qdr:m`, exa `startPublishedDate`, parallel objective text).
+- **Geo evidence**: `locations.geo_groups` is the only geo allowlist. Each group has `label`, `terms`, `onsite`, `remote`; a job passes when its own location/title/tags text matches a term of a group enabled for its mode (on-site or remote). A remote flag alone never passes. No track, board, or query location is ever copied into a result — websearch hits get `location` only from `detect_geo(title + snippet)` (empty when there is no evidence), and HTML boards/extract seeds emit their configured `location`/`remote` scope verbatim.
+- **Web search** (`WEBSEARCH_ENABLED=1` only): one query per track per enabled geo-group label — `{kw1} remote jobs {label}` for remote tracks, `{kw1} jobs {label}` for on-site tracks. Providers add freshness hints where supported (serper/firecrawl `tbs=qdr:m`, exa `startPublishedDate`, parallel objective text).
 - **Company labels**: ATS-hosted result URLs derive the company from the employer slug (`boards.greenhouse.io/acme/...` -> `Acme`, `acme.personio.de` -> `Acme`); other URLs fall back to the domain label.
-- **Extract stage**: listing pages are mined for job links (budget `EXTRACT_MAX_PAGES`/`EXTRACT_MAX_PER_HOST`); seed pages live in `EXTRACT_SEEDS`.
+- **Extract stage**: listing pages are mined for job links (budget `EXTRACT_MAX_PAGES`/`EXTRACT_MAX_PER_HOST`); seed pages live in `EXTRACT_SEEDS`. Listing pages and depth-2 facet hops carry a `{url, location, remote, source}` scope inherited by every mined link; links with an empty scope fail the geo gate.
+- **Run report**: `collect_with_report` returns a `SearchResult` whose `SearchReport` counts `fetched`/`accepted` per source and `rejected` per reason (`Location`, `No track match`, `Duplicate URL`, `Declined employer`, filter reasons), plus per-adapter `errors`. `run_search.py` prints it as sorted JSON. If every adapter raises, the run fails with `RuntimeError: all job sources failed`. Each candidate's `why_fit` ends with `source: <name>`.
 - **Verify stage** (`WEBSEARCH_ENABLED=1` only): the top `EXTRACT_MAX_VERIFY` (default 12) candidates by score have their posting page extracted; candidates are dropped when the body shows a language requirement (`REJECT_LANG` terms) or a dead-listing marker (`no longer available`, `stelle ist nicht mehr`, `position has been filled`, `expired`). Extraction failures keep the candidate. Verified candidates carry `_verified: True`.
 - **Arbeitsagentur**: dormant source active only when `ARBEITSAGENTUR_API_KEY` is set; queries the bund.dev jobsuche API once per non-remote track keyword plus one generic `software` query.
 
@@ -81,6 +83,7 @@ score = min(10, score)
 1. Edit `config.json` → `tracks` to add/change track keywords, remote flags,
    locations, CV labels, and sidebar colors.
 2. Edit `config.json` → `reject` for new unwanted title/hours/language/host
-   patterns, and `locations` for accepted cities and blocked remote regions.
+   patterns, and `locations.geo_groups` for the accepted on-site/remote
+   geographies.
 3. Edit `config.json` → `sources` to toggle job sources or add boards.
 4. Restart the local server or re-run the GitHub Actions workflow.

@@ -53,8 +53,7 @@ def fetch_all():
         rows = resp.data or []
         return [_row_to_job(r) for r in rows]
     except Exception as exc:
-        print(f"[db] fetch_all failed: {exc}")
-        return []
+        raise RuntimeError(f"fetch_all failed: {exc}") from exc
 
 
 def insert(job):

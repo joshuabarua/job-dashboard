@@ -1,10 +1,30 @@
 {
   "locations": {
     "cities": ["Berlin", "London", "Brighton"],
-    "allowed_regions": [
-      "germany", "deutschland", "uk", "u.k.", "united kingdom",
-      "great britain", "britain", "england", "scotland", "wales",
-      "northern ireland"
+    "geo_groups": [
+      {
+        "label": "Berlin",
+        "terms": ["berlin"],
+        "onsite": true,
+        "remote": true
+      },
+      {
+        "label": "Germany",
+        "terms": ["germany", "deutschland"],
+        "onsite": false,
+        "remote": true
+      },
+      {
+        "label": "United Kingdom",
+        "terms": [
+          "uk", "u.k.", "united kingdom", "great britain", "britain",
+          "england", "scotland", "wales", "northern ireland", "london",
+          "brighton", "manchester", "birmingham", "edinburgh", "glasgow",
+          "bristol", "leeds", "liverpool", "cambridge", "oxford"
+        ],
+        "onsite": true,
+        "remote": true
+      }
     ]
   },
   "tracks": {
@@ -160,13 +180,13 @@
     "arbeitsagentur_city": "Berlin",
     "html_boards": true,
     "boards": [
-      {"name": "Reed UK", "url": "https://www.reed.co.uk/jobs/developer-jobs?q=developer", "remote": true},
-      {"name": "ImpactPool Germany", "url": "https://www.impactpool.org/countries/Germany", "remote": false},
-      {"name": "EnglishJobs Berlin", "url": "https://englishjobs.de/in/berlin", "remote": false},
-      {"name": "Stepstone EU Berlin", "url": "https://www.stepstone.de/jobs/europ%C3%A4ische-union/in-berlin", "remote": false}
+      {"name": "Reed UK", "url": "https://www.reed.co.uk/jobs/developer-jobs?q=developer", "location": "United Kingdom", "remote": false},
+      {"name": "ImpactPool Germany", "url": "https://www.impactpool.org/countries/Germany", "location": "Germany", "remote": false},
+      {"name": "EnglishJobs Berlin", "url": "https://englishjobs.de/in/berlin", "location": "Berlin", "remote": false},
+      {"name": "Stepstone EU Berlin", "url": "https://www.stepstone.de/jobs/europ%C3%A4ische-union/in-berlin", "location": "Berlin", "remote": false}
     ],
     "extract_seeds": [
-      {"url": "https://berlinstartupjobs.com/engineering/", "remote": false}
+      {"url": "https://berlinstartupjobs.com/engineering/", "location": "Berlin", "remote": false}
     ]
   },
   "skill_keywords": [

@@ -22,7 +22,7 @@ def _job_payload(job, key):
     return j
 
 def build():
-    jobs = tracker.get_jobs()
+    jobs = tracker.get_jobs(strict=True)
     jobs = tracker.dedup_status(jobs)
     jobs = tracker.sort_jobs(jobs)
 

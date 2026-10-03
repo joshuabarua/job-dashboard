@@ -198,10 +198,16 @@ def test_extract_budget_offline():
     env = {"EXTRACT_MAX_PAGES": "4", "EXTRACT_MAX_PER_HOST": "2"}
     with patch.dict(os.environ, env), \
          patch.object(websearch, "_extract_mined", fake_mined):
-        found = jobsearch._extract_stage(
-            ["https://a.example.com/listing-one/", "https://a.example.com/listing-two/",
-             "https://a.example.com/listing-three/"],
-            ["Developer"], set())
+        scopes = [
+            {"url": u, "location": "Berlin", "remote": False,
+             "source": "test"}
+            for u in [
+                "https://a.example.com/listing-one/",
+                "https://a.example.com/listing-two/",
+                "https://a.example.com/listing-three/",
+            ]
+        ]
+        found = jobsearch._extract_stage(scopes, ["Developer"], set())
 
     hosts = Counter(jobsearch._page_host(u) for u in calls)
     assert len(calls) == 4, f"total budget not enforced: {calls}"
@@ -241,29 +247,43 @@ def test_pipeline_assertions():
 
 
 def test_location_offline():
-    """Berlin/London/Brighton on-site, remote unless restricted outside UK/EU."""
+    """Geo evidence required: geo_groups decide by onsite/remote mode."""
     def job(location, remote=False):
         return {"job_title": "x", "company": "", "location": location,
                 "url": "", "tags": [], "remote": remote}
 
-    cfg = {"remote": True}
-    ok = ["Berlin", "London", "Brighton", "Remote", "Remote - UK",
-          "UK-wide remote", "Germany (Remote)", "Deutschlandweit remote",
-          "Remote - EMEA", "Berlin / Hybrid", "London, England"]
-    no = ["Remote - US only", "Remote (USA)", "New York", "Munich",
-          "Remote - APAC", "Toronto, Canada", "Remote - Australia",
-          "Paris", "", "Hamburg"]
-    for loc in ok:
-        assert jobsearch._location_ok(job(loc), cfg), f"should pass: {loc}"
-    for loc in no:
-        assert not jobsearch._location_ok(job(loc), cfg), f"should fail: {loc}"
-    # remote flag carries jobs with no location text
-    assert jobsearch._location_ok(job("", remote=True), cfg)
-    # on-site cities pass even on non-remote tracks; remote does not
-    assert jobsearch._location_ok(job("London"), {"remote": False})
-    assert not jobsearch._location_ok(job("Remote"), {"remote": False})
-    assert not jobsearch._location_ok(job("", remote=True), {"remote": False})
-    print("[check] location rules passed: cities + remote + region blocks")
+    remote_cfg = {"remote": True}
+    onsite_cfg = {"remote": False}
+    ok_onsite = ["Berlin", "London", "Brighton", "Berlin / Hybrid",
+                 "London, England", "Manchester", "Glasgow, Scotland"]
+    no_onsite = ["Munich", "Munich, Germany", "Hamburg", "Paris", "New York",
+                 "Toronto, Canada", "", "Remote", "Remote - Germany"]
+    ok_remote = ["Remote - Germany", "Germany (Remote)", "Remote - UK",
+                 "UK-wide remote", "Remote Berlin"]
+    no_remote = ["Remote", "", "Remote - US only", "Remote (USA)",
+                 "Remote - EMEA", "Remote - APAC", "Remote - Australia",
+                 "Worldwide", "Europe", "Remote - Columbus Ohio"]
+    for loc in ok_onsite:
+        assert jobsearch._location_ok(job(loc), onsite_cfg), \
+            f"onsite should pass: {loc}"
+    for loc in no_onsite:
+        assert not jobsearch._location_ok(job(loc), onsite_cfg), \
+            f"onsite should fail: {loc}"
+    for loc in ok_remote:
+        assert jobsearch._location_ok(job(loc, remote=True), remote_cfg), \
+            f"remote should pass: {loc}"
+    for loc in no_remote:
+        assert not jobsearch._location_ok(job(loc, remote=True), remote_cfg), \
+            f"remote should fail: {loc}"
+    assert not jobsearch._location_ok(job("", remote=True), remote_cfg)
+    assert not jobsearch._location_ok(
+        job("Remote - Berlin", remote=True), onsite_cfg)
+    assert jobsearch._location_ok(
+        job("Remote - Berlin", remote=True), remote_cfg)
+    assert not jobsearch._location_ok(job("Munich, Germany"), onsite_cfg)
+    assert jobsearch._location_ok(
+        job("Remote - Germany", remote=True), remote_cfg)
+    print("[check] location rules passed: geo_groups onsite/remote evidence")
 
 
 def test_canonical_url_offline():
@@ -379,7 +399,7 @@ def test_arbeitsagentur_offline():
         "job_title": "IT Support Engineer (m/w/d)", "company": "Acme GmbH",
         "location": "Berlin",
         "url": "https://www.arbeitsagentur.de/jobsuche/jobdetail/1234-5678-S",
-        "tags": [], "remote": False}], jobs
+        "tags": [], "remote": False, "_source": "arbeitsagentur"}], jobs
     print("[check] arbeitsagentur passed: v6 mapping + empty-result tolerance")
 
 

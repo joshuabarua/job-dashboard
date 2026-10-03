@@ -11,6 +11,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
 from . import config
@@ -127,10 +128,7 @@ def _get_json(url):
 def _fetch_arbeitnow():
     seen = set()
     for page in range(1, 5):
-        try:
-            data = _get_json(f"https://www.arbeitnow.com/api/job-board-api?page={page}")
-        except (urllib.error.URLError, OSError, json.JSONDecodeError):
-            break
+        data = _get_json(f"https://www.arbeitnow.com/api/job-board-api?page={page}")
         items = data.get("data", [])
         if not items:
             break
@@ -146,6 +144,7 @@ def _fetch_arbeitnow():
                 "url": url,
                 "tags": j.get("tags") or [],
                 "remote": bool(j.get("remote")),
+                "_source": "arbeitnow",
             }
 
 
@@ -160,6 +159,7 @@ def _fetch_remotive():
             "url": j.get("url", ""),
             "tags": j.get("tags") or [],
             "remote": True,
+            "_source": "remotive",
         }
 
 
@@ -177,6 +177,7 @@ def _fetch_remoteok():
             "url": j.get("url") or j.get("apply_url") or "",
             "tags": j.get("tags") or [],
             "remote": True,
+            "_source": "remoteok",
         }
 
 
@@ -190,6 +191,7 @@ def _fetch_jobicy():
             "url": j.get("url", ""),
             "tags": [j.get("jobIndustry")] if j.get("jobIndustry") else [],
             "remote": True,
+            "_source": "jobicy",
         }
 
 
@@ -224,6 +226,7 @@ def _fetch_wwr():
                 "url": link,
                 "tags": [],
                 "remote": True,
+                "_source": "weworkremotely",
             }
 
 
@@ -274,6 +277,7 @@ def _fetch_adzuna():
                     "url": j.get("redirect_url", ""),
                     "tags": [],
                     "remote": remote,
+                    "_source": "adzuna",
                 }
 
 
@@ -305,6 +309,7 @@ def _fetch_reed():
                 "url": j.get("jobUrl", ""),
                 "tags": [],
                 "remote": "remote" in f"{title} {loc}".lower(),
+                "_source": "reed",
             }
 
 
@@ -331,7 +336,11 @@ def _fetch_arbeitsagentur():
             queries.append(cfg["keywords"][0])
     if any(cfg["remote"] for cfg in TRACKS.values()):
         queries.append("software")
+    attempted = 0
+    succeeded = 0
+    errors = []
     for kw in queries:
+        attempted += 1
         try:
             resp = requests.get(
                 "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs",
@@ -340,7 +349,9 @@ def _fetch_arbeitsagentur():
                 timeout=TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
+            succeeded += 1
         except Exception as e:
+            errors.append(f"{kw}: {e}")
             print(f"[search] arbeitsagentur '{kw}' failed: {e}", file=sys.stderr)
             continue
         items = data.get("ergebnisliste") if isinstance(data, dict) else None
@@ -369,7 +380,11 @@ def _fetch_arbeitsagentur():
                 "url": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
                 "tags": [],
                 "remote": False,
+                "_source": "arbeitsagentur",
             }
+    if attempted and succeeded == 0:
+        raise RuntimeError(
+            "arbeitsagentur: all queries failed: " + "; ".join(errors))
 
 
 # --- Additional HTML boards (user-provided) --------------------------------
@@ -377,8 +392,6 @@ def _fetch_arbeitsagentur():
 ADDITIONAL_BOARDS = config.sources().get("boards") or []
 
 EXTRACT_SEEDS = config.sources().get("extract_seeds") or []
-
-_PRIMARY_CITY = config.cities()[0] if config.cities() else ""
 
 
 def _fetch_html_boards():
@@ -388,8 +401,11 @@ def _fetch_html_boards():
     if requests is None or BeautifulSoup is None:
         print("[search] requests+beautifulsoup4 not installed; skipping HTML boards", file=sys.stderr)
         return
+    yielded = False
+    failures = []
     for board in ADDITIONAL_BOARDS:
-        name, base_url, remote = board["name"], board["url"], board["remote"]
+        name = board["name"]
+        base_url = board["url"]
         try:
             resp = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0 (JobCommandCenter)"}, timeout=TIMEOUT)
             resp.raise_for_status()
@@ -409,16 +425,22 @@ def _fetch_html_boards():
                 title = " ".join(a.get_text().split())
                 if not title:
                     continue
+                yielded = True
                 yield {
                     "job_title": title,
                     "company": name,
-                    "location": "Remote" if remote else _PRIMARY_CITY,
+                    "location": board["location"],
                     "url": full,
                     "tags": [],
-                    "remote": remote,
+                    "remote": board["remote"],
+                    "_source": f"html:{name}",
                 }
         except Exception as e:
+            failures.append(f"{name}: {e}")
             print(f"[search] {name} failed: {e}", file=sys.stderr)
+    if ADDITIONAL_BOARDS and not yielded \
+            and len(failures) == len(ADDITIONAL_BOARDS):
+        raise RuntimeError("all html boards failed: " + "; ".join(failures))
 
 
 # --- Web search (metered providers; WEBSEARCH_ENABLED gated) ---------------
@@ -452,35 +474,33 @@ def _company_from_url(url):
 
 
 def _fetch_websearch():
-    """Metered multi-provider web search; ~2 queries per track."""
+    """Metered multi-provider web search; one query per track x geo target."""
     if websearch.requests is None:
         print("[search] requests not installed; skipping web search", file=sys.stderr)
         return
     for cfg in TRACKS.values():
         kw1 = cfg["keywords"][0]
-        if cfg["remote"]:
-            queries = [f"{kw1} remote jobs"]
-            if len(cfg["keywords"]) > 1:
-                queries.append(f"{kw1} {cfg['keywords'][1]} remote jobs")
-        else:
-            city = cfg.get("location") or _PRIMARY_CITY
-            queries = [f"{kw1} jobs {city}"]
-            if len(cfg["keywords"]) > 1:
-                queries.append(f"{kw1} {cfg['keywords'][1]} jobs {city}")
-        for query in queries:
+        for target in config.search_targets(cfg["remote"]):
+            if cfg["remote"]:
+                query = f"{kw1} remote jobs {target}"
+            else:
+                query = f"{kw1} jobs {target}"
             try:
                 results = websearch.search(query, limit=10)
             except Exception as e:
                 print(f"[search] websearch failed ({query}): {e}", file=sys.stderr)
                 continue
             for r in results:
+                text = f"{r['title']} {r.get('snippet') or ''}"
+                remote = bool(_REMOTE_RE.search(text))
                 yield {
                     "job_title": r["title"],
                     "company": _company_from_url(r["url"]),
-                    "location": "Remote" if cfg["remote"] else cfg.get("location", _PRIMARY_CITY),
+                    "location": config.detect_geo(text, remote),
                     "url": r["url"],
                     "tags": [r["snippet"]] if r.get("snippet") else [],
-                    "remote": cfg["remote"],
+                    "remote": remote,
+                    "_source": "websearch",
                 }
 
 
@@ -492,6 +512,12 @@ def _websearch_enabled():
 
 def _norm(s):
     return re.sub(r"[\s\-/_.]+", " ", (s or "").lower().strip())
+
+
+def _contains_term(text, term):
+    normalized = _norm(term).strip()
+    return bool(normalized and re.search(
+        rf"(?<![a-z0-9]){re.escape(normalized)}(?![a-z0-9])", text))
 
 
 def _matches(job, track_cfg):
@@ -513,18 +539,17 @@ def _matches(job, track_cfg):
 def _rejected(job):
     t = _norm(job["job_title"])
     for k in REJECT_TITLE:
-        if re.search(rf"\b{re.escape(k)}\b", t):
+        if _contains_term(t, k):
             return f"Seniority: {k}"
     for k in REJECT_HOURS:
         if k in t:
             return f"Hours: {k}"
     tags = _norm(" ".join(job.get("tags", [])))
     for k in REJECT_LANG:
-        if k in t or k in tags:
+        if _contains_term(t, k) or _contains_term(tags, k):
             return f"Language: {k}"
     for k in REJECT_SKILLS:
-        pat = rf"(?<![a-z0-9]){re.escape(_norm(k))}(?![a-z0-9])"
-        if re.search(pat, t) or re.search(pat, tags):
+        if _contains_term(t, k) or _contains_term(tags, k):
             return f"Skill: {k}"
     tc = t + " " + _norm(job.get("company", ""))
     for k in REJECT_TEXT:
@@ -552,21 +577,39 @@ def _rejected(job):
 
 
 _OK_CITIES = tuple(config.cities_lower())
-_OK_GEO = config.allowed_geo_pattern()
+
+_REMOTE_RE = re.compile(
+    r"(?<![a-z0-9])(remote|work from home|home office|homeoffice|wfh"
+    r"|distributed)(?![a-z0-9])|(?<![a-z0-9])telecommut",
+    re.I)
+
+
+def _is_remote(job):
+    if job.get("remote"):
+        return True
+    text = " ".join([
+        job.get("job_title") or "",
+        job.get("location") or "",
+        " ".join(job.get("tags") or []),
+    ])
+    return bool(_REMOTE_RE.search(text))
 
 
 def _location_ok(job, track_cfg):
-    """Strict: only jobs whose location names an allowed geo — configured
-    cities plus allowed_regions (Germany, UK). Applies to on-site and
-    remote alike: 'Remote - Germany'/'Remote - UK' pass, unrestricted or
-    other-country remote does not."""
-    loc = _norm(job["location"])
-    return bool(_OK_GEO and _OK_GEO.search(loc))
+    remote = _is_remote(job)
+    if remote and not track_cfg["remote"]:
+        return False
+    evidence = " ".join([
+        job.get("location") or "",
+        job.get("job_title") or "",
+        " ".join(job.get("tags") or []),
+    ])
+    return bool(config.detect_geo(evidence, remote))
 
 
 def _score(hits, job, track_cfg):
     score = 3 + 2 * len(hits)
-    if track_cfg["remote"] and job.get("remote"):
+    if track_cfg["remote"] and _is_remote(job):
         score += 1
     if any(c in _norm(job["job_title"]) for c in _OK_CITIES) and not track_cfg["remote"]:
         score += 1
@@ -575,8 +618,10 @@ def _score(hits, job, track_cfg):
 
 def _why_fit(job, track, hits):
     parts = [f"Matches: {', '.join(hits)}" if hits else "Keyword match"]
-    if job.get("remote"):
+    if _is_remote(job):
         parts.append("remote")
+    if job.get("_source"):
+        parts.append(f"source: {job['_source']}")
     return "; ".join(parts)
 
 
@@ -611,8 +656,8 @@ def _declined_employer(job, declined):
     return None
 
 
-def _mined_candidate(link, tracks, seen_urls, declined=None):
-    """Run a mined link through the same pipeline as any source job."""
+def _mined_candidate(link, tracks, seen_urls, declined=None,
+                     location="", remote=False, source="extract"):
     url = tracker.canonical_url(link.get("url"))
     if not url or url in seen_urls:
         return None
@@ -620,10 +665,11 @@ def _mined_candidate(link, tracks, seen_urls, declined=None):
     base = {
         "job_title": link.get("title", ""),
         "company": _company_from_url(url),
-        "location": "",
+        "location": location,
         "url": url,
         "tags": [],
-        "remote": False,
+        "remote": remote,
+        "_source": source,
     }
     if _declined_employer(base, declined):
         return None
@@ -631,29 +677,28 @@ def _mined_candidate(link, tracks, seen_urls, declined=None):
         return None
     for t in tracks:
         cfg = TRACKS[t]
-        job = dict(base, location="Remote" if cfg["remote"] else cfg.get("location", _PRIMARY_CITY),
-                   remote=cfg["remote"])
-        if not _location_ok(job, cfg):
+        if not _location_ok(base, cfg):
             continue
-        hits = _matches(job, cfg)
+        hits = _matches(base, cfg)
         if not hits:
             continue
         return {
-            "job_title": job["job_title"],
-            "company": job["company"],
-            "location": job["location"],
+            "job_title": base["job_title"],
+            "company": base["company"],
+            "location": base["location"],
             "url": url,
             "track": t,
-            "match_score": _score(hits, job, cfg),
-            "why_fit": _why_fit(job, t, hits),
+            "match_score": _score(hits, base, cfg),
+            "why_fit": _why_fit(base, t, hits),
             "application_strategy": _strategy(cfg),
             "recommended_cv": cfg["cv"],
             "_dup_flag": False,
+            "_source": source,
         }
     return None
 
 
-def _extract_stage(listing_urls, tracks, seen_urls, declined=None):
+def _extract_stage(listing_scopes, tracks, seen_urls, declined=None):
     """Extract listing pages and mine jobs; bounded depth-2 facet hop.
 
     Budget: EXTRACT_MAX_PAGES total extract calls (default 25) shared across
@@ -666,10 +711,20 @@ def _extract_stage(listing_urls, tracks, seen_urls, declined=None):
     seen_pages = set()
     host_counts = {}
     pages = 0
-    queue = [s["url"] for s in EXTRACT_SEEDS] + list(dict.fromkeys(listing_urls))
+    queue = [
+        {"url": s["url"], "location": s["location"],
+         "remote": s["remote"], "source": s.get("source") or "extract"}
+        for s in EXTRACT_SEEDS
+    ]
+    queued = {s["url"] for s in queue}
+    for s in listing_scopes:
+        if s["url"] not in queued:
+            queued.add(s["url"])
+            queue.append(s)
     for depth in (1, 2):
         seeds = []
-        for url in queue:
+        for scope in queue:
+            url = scope["url"]
             if pages >= max_pages:
                 break
             host = _page_host(url)
@@ -686,9 +741,15 @@ def _extract_stage(listing_urls, tracks, seen_urls, declined=None):
                 print(f"[search] extract failed for {url}: {e}", file=sys.stderr)
                 continue
             if depth == 1:
-                seeds.extend(new_seeds)
+                seeds.extend(
+                    {"url": u, "location": scope["location"],
+                     "remote": scope["remote"], "source": scope["source"]}
+                    for u in new_seeds)
             for link in jobs:
-                cand = _mined_candidate(link, tracks, seen_urls, declined)
+                cand = _mined_candidate(
+                    link, tracks, seen_urls, declined,
+                    location=scope["location"], remote=scope["remote"],
+                    source=scope["source"])
                 if cand:
                     found.append(cand)
         if pages >= max_pages:
@@ -802,12 +863,32 @@ def _check_links(candidates):
     return out
 
 
-def collect(track=None):
-    """Search all sources, apply rules, return scored non-duplicate candidates."""
-    candidates = []
-    remote_only = {_fetch_remotive, _fetch_remoteok, _fetch_jobicy, _fetch_wwr}
-    sources = [
-        f for key, f in [
+@dataclass
+class SearchReport:
+    fetched: dict[str, int] = field(default_factory=dict)
+    accepted: dict[str, int] = field(default_factory=dict)
+    rejected: dict[str, int] = field(default_factory=dict)
+    errors: dict[str, str] = field(default_factory=dict)
+
+    def render(self):
+        return json.dumps({
+            "fetched": self.fetched,
+            "accepted": self.accepted,
+            "rejected": self.rejected,
+            "errors": self.errors,
+        }, sort_keys=True)
+
+
+@dataclass
+class SearchResult:
+    candidates: list[dict]
+    report: SearchReport
+
+
+def _adapters(track=None):
+    remote_only = {"remotive", "remoteok", "jobicy", "weworkremotely"}
+    adapters = [
+        (name, fn) for name, fn in [
             ("arbeitnow", _fetch_arbeitnow),
             ("remotive", _fetch_remotive),
             ("remoteok", _fetch_remoteok),
@@ -815,42 +896,67 @@ def collect(track=None):
             ("weworkremotely", _fetch_wwr),
             ("html_boards", _fetch_html_boards),
         ]
-        if config.source_enabled(key)
+        if config.source_enabled(name)
     ]
-    if track:
-        tracks = [track]
-        # remote-only sources can't serve on-site tracks
-        if track in TRACKS and not TRACKS[track].get("remote"):
-            sources = [f for f in sources if f not in remote_only]
-    else:
-        tracks = list(TRACKS)
-    sources.append(_fetch_arbeitsagentur)
-    sources.append(_fetch_adzuna)
-    sources.append(_fetch_reed)
+    if track and track in TRACKS and not TRACKS[track].get("remote"):
+        adapters = [(n, f) for n, f in adapters if n not in remote_only]
+    adapters.append(("arbeitsagentur", _fetch_arbeitsagentur))
+    if (os.environ.get("ADZUNA_APP_ID") or "").strip() \
+            and (os.environ.get("ADZUNA_APP_KEY") or "").strip():
+        adapters.append(("adzuna", _fetch_adzuna))
+    if (os.environ.get("REED_API_KEY") or "").strip():
+        adapters.append(("reed", _fetch_reed))
     if _websearch_enabled():
-        sources.append(_fetch_websearch)
+        adapters.append(("websearch", _fetch_websearch))
+    return adapters
 
-    declined = tracker.declined_domains()
-    seen_urls = set()
-    listing_urls = []
-    for fetch in sources:
+
+def _bump(counts, key):
+    counts[key] = counts.get(key, 0) + 1
+
+
+def _collect_sources(adapters, tracks, report, declined, seen_urls):
+    candidates = []
+    listing_scopes = []
+    attempted = 0
+    failed = 0
+    for name, fetch in adapters:
+        attempted += 1
+        yielded = False
         try:
             for job in fetch():
-                url = tracker.canonical_url(job["url"])
-                if not url or url in seen_urls:
+                yielded = True
+                src = job.get("_source") or name
+                _bump(report.fetched, src)
+                url = tracker.canonical_url(job.get("url"))
+                if not url:
+                    _bump(report.rejected, "Missing URL")
+                    continue
+                if url in seen_urls:
+                    _bump(report.rejected, "Duplicate URL")
                     continue
                 seen_urls.add(url)
                 if _declined_employer(job, declined):
+                    _bump(report.rejected, "Declined employer")
                     continue
                 reason = _rejected(job)
                 if reason:
+                    _bump(report.rejected, reason)
                     if reason in _LISTING_REASONS:
-                        listing_urls.append(url)
+                        listing_scopes.append({
+                            "url": url,
+                            "location": job.get("location") or "",
+                            "remote": bool(job.get("remote")),
+                            "source": src,
+                        })
                     continue
+                geo_ok = False
+                accepted = False
                 for t in tracks:
                     cfg = TRACKS[t]
                     if not _location_ok(job, cfg):
                         continue
+                    geo_ok = True
                     hits = _matches(job, cfg)
                     if not hits:
                         continue
@@ -865,24 +971,59 @@ def collect(track=None):
                         "application_strategy": _strategy(cfg),
                         "recommended_cv": cfg["cv"],
                         "_dup_flag": False,
+                        "_source": src,
                     }
                     candidates.append(cand)
+                    _bump(report.accepted, src)
+                    accepted = True
                     break  # first matching track wins
+                if not accepted:
+                    _bump(report.rejected,
+                          "No track match" if geo_ok else "Location")
         except Exception as e:
-            print(f"[search] source failed: {e}", file=sys.stderr)
+            if not yielded:
+                failed += 1
+            report.errors[name] = str(e)
+            print(f"[search] {name} failed: {e}", file=sys.stderr)
+    if attempted and failed == attempted:
+        raise RuntimeError("all job sources failed")
+    return candidates, listing_scopes
+
+
+def collect_with_report(track=None):
+    if track and track not in TRACKS:
+        raise ValueError(f"Unknown track: {track}")
+    if track:
+        tracks = [track]
+    else:
+        tracks = list(TRACKS)
+    report = SearchReport()
+    existing_jobs = tracker.get_jobs(strict=True)
+    declined = tracker.declined_domains(existing_jobs)
+    seen_urls = set()
+    candidates, listing_scopes = _collect_sources(
+        _adapters(track), tracks, report, declined, seen_urls)
 
     if _websearch_enabled():
-        candidates.extend(_extract_stage(listing_urls, tracks, seen_urls,
-                                         declined))
+        mined = _extract_stage(listing_scopes, tracks, seen_urls, declined)
+        for c in mined:
+            candidates.append(c)
+            _bump(report.accepted, c.get("_source") or "extract")
         candidates = _verify_candidates(candidates)
 
     candidates = _check_links(candidates)
 
-    # drop duplicates against tracker CSV
+    known_jobs = list(existing_jobs)
     final = []
     for c in candidates:
-        dup = tracker.has_duplicate(c)
+        dup = tracker.has_duplicate(c, known_jobs)
         c["_dup_flag"] = bool(dup)
+        if not dup:
+            known_jobs.append(c)
         final.append(c)
-    final.sort(key=lambda c: (-c["match_score"], c["track"]))
-    return final[:40]
+    final.sort(key=lambda c: (c["_dup_flag"], -c["match_score"], c["track"]))
+    return SearchResult(candidates=final[:40], report=report)
+
+
+def collect(track=None):
+    return collect_with_report(track).candidates

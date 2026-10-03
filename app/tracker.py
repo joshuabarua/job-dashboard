@@ -23,15 +23,16 @@ _FIELDNAMES = [
 ]
 
 
-def add_job(candidate):
+def add_job(candidate, check_duplicate=True):
     """Append a candidate to Supabase. Returns (message, dup_reason)."""
     if not db.ENABLED:
         return False, "Supabase not configured"
     if not candidate.get("url") and not candidate.get("job_title"):
         return False, "Missing url and title"
-    dup = has_duplicate(candidate)
-    if dup:
-        return False, f"Duplicate: {dup}"
+    if check_duplicate:
+        dup = has_duplicate(candidate)
+        if dup:
+            return False, f"Duplicate: {dup}"
     row = {f: "" for f in _FIELDNAMES}
     row.update({
         "notion_id": candidate.get("notion_id", ""),
@@ -83,9 +84,11 @@ def remove_job(identifier):
 _warned = False
 
 
-def get_jobs():
+def get_jobs(strict=False):
     global _warned
     if not db.ENABLED:
+        if strict:
+            raise RuntimeError("Supabase not configured")
         if not _warned:
             print("[tracker] Supabase not configured; no jobs available")
             _warned = True
@@ -224,7 +227,7 @@ def _shared_board(host):
     return any(host == b or host.endswith("." + b) for b in _SHARED_BOARDS)
 
 
-def declined_domains():
+def declined_domains(jobs=None):
     """Employer identities from Declined rows, for decline-learning rejects.
 
     Returns a set mixing canonical URL hosts and normalized company keys.
@@ -233,7 +236,9 @@ def declined_domains():
     is contributed instead of the platform host.
     """
     declined = set()
-    for j in get_jobs():
+    if jobs is None:
+        jobs = get_jobs()
+    for j in jobs:
         if (j.get("status") or "").strip() != "Declined":
             continue
         name = _company_key(j.get("company"))
@@ -286,16 +291,18 @@ def _normalize_location(loc):
     return "Unspecified"
 
 
-def has_duplicate(candidate):
+def has_duplicate(candidate, jobs=None):
     """Check a candidate against the tracker using the heartbeat's dup rules.
 
     Rules: same URL; same normalized (title + company); same normalized title
     with an already-processed status (Applied/Reviewed/Skipped/Declined).
     """
+    if jobs is None:
+        jobs = get_jobs()
     title_raw = _normalize_title(candidate.get("job_title", ""))
     company = (candidate.get("company", "") or "").strip().lower()
     url = canonical_url(candidate.get("url", ""))
-    for j in get_jobs():
+    for j in jobs:
         jurl = canonical_url(j.get("url", ""))
         if url and jurl and url == jurl:
             return "same URL"
