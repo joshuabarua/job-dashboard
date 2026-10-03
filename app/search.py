@@ -479,29 +479,34 @@ def _fetch_websearch():
         print("[search] requests not installed; skipping web search", file=sys.stderr)
         return
     for cfg in TRACKS.values():
-        kw1 = cfg["keywords"][0]
-        for target in config.search_targets(cfg["remote"]):
-            if cfg["remote"]:
-                query = f"{kw1} remote jobs {target}"
-            else:
-                query = f"{kw1} jobs {target}"
-            try:
-                results = websearch.search(query, limit=10)
-            except Exception as e:
-                print(f"[search] websearch failed ({query}): {e}", file=sys.stderr)
-                continue
-            for r in results:
-                text = f"{r['title']} {r.get('snippet') or ''}"
-                remote = bool(_REMOTE_RE.search(text))
-                yield {
-                    "job_title": r["title"],
-                    "company": _company_from_url(r["url"]),
-                    "location": config.detect_geo(text, remote),
-                    "url": r["url"],
-                    "tags": [r["snippet"]] if r.get("snippet") else [],
-                    "remote": remote,
-                    "_source": "websearch",
-                }
+        custom_terms = cfg.get("search_terms")
+        terms = custom_terms or [cfg["keywords"][0]]
+        for term in terms:
+            for target in config.search_targets(cfg["remote"]):
+                if cfg["remote"]:
+                    query = f"{term} remote jobs {target}"
+                elif custom_terms:
+                    query = f"{term} {target}"
+                else:
+                    query = f"{term} jobs {target}"
+                try:
+                    results = websearch.search(query, limit=10)
+                except Exception as e:
+                    print(f"[search] websearch failed ({query}): {e}",
+                          file=sys.stderr)
+                    continue
+                for r in results:
+                    text = f"{r['title']} {r.get('snippet') or ''}"
+                    remote = bool(_REMOTE_RE.search(text))
+                    yield {
+                        "job_title": r["title"],
+                        "company": _company_from_url(r["url"]),
+                        "location": config.detect_geo(text, remote),
+                        "url": r["url"],
+                        "tags": [r["snippet"]] if r.get("snippet") else [],
+                        "remote": remote,
+                        "_source": "websearch",
+                    }
 
 
 def _websearch_enabled():
@@ -523,12 +528,23 @@ def _contains_term(text, term):
 def _matches(job, track_cfg):
     title = _norm(job["job_title"])
     company = _norm(job.get("company", "") or "")
+    tags = _norm(" ".join(job.get("tags") or []))
     hay = re.sub(r"[^a-z0-9 ]+", " ", title + " " + company)
     hits = []
     for k in track_cfg["keywords"]:
         kk = _norm(k)
         if re.search(rf"(?<![a-z0-9]){re.escape(kk)}(?![a-z0-9])", hay):
             hits.append(k)
+    ctx_terms = track_cfg.get("context_keywords")
+    role_terms = track_cfg.get("role_keywords")
+    if ctx_terms and role_terms:
+        ctx_hay = re.sub(r"[^a-z0-9 ]+", " ",
+                         title + " " + company + " " + tags)
+        role_hay = re.sub(r"[^a-z0-9 ]+", " ", title + " " + tags)
+        role_hits = [k for k in role_terms if _contains_term(role_hay, k)]
+        if role_hits and any(
+                _contains_term(ctx_hay, k) for k in ctx_terms):
+            hits.extend(role_hits)
     hits = list(dict.fromkeys(hits))
     # level-only modifiers (junior/associate) must co-occur with a role keyword
     if all(h in MODIFIER_KEYWORDS for h in hits):

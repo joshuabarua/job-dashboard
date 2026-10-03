@@ -145,9 +145,32 @@
     },
     "Bouldering Gyms": {
       "keywords": [
-        "bouldering", "bouldering gym", "climbing gym", "climbing",
-        "rock climbing", "klettern", "kletterhalle", "boulderhalle",
-        "boulder gym", "bouldergym", "boulderwelt"
+        "bouldering", "bouldering gym", "climbing gym", "klettern",
+        "kletterhalle", "boulderhalle", "boulder gym", "bouldergym",
+        "routesetter", "route setter", "routesetting", "routenschrauber",
+        "routenschrauberin", "routenbau", "bouldertrainer",
+        "boulder trainer", "bouldering coach", "bouldering instructor",
+        "klettertrainer"
+      ],
+      "context_keywords": [
+        "bouldering", "boulderhalle", "climbing gym", "kletterhalle",
+        "element boulders", "berta block", "boulderklub", "bouldergarten",
+        "ostbloc", "südbloc", "suedbloc", "der kegel",
+        "basement boulderstudio", "cliffhanger", "magic mountain",
+        "klettermax", "bergwerk berlin", "urban apes", "boulderwelt"
+      ],
+      "role_keywords": [
+        "front desk", "reception", "empfang", "service", "theke", "tresen",
+        "kursleitung", "kurswesen", "trainer", "coach", "instructor",
+        "marketing", "content creation", "routesetter", "route setter",
+        "routesetting", "routenschrauber", "routenschrauberin", "routenbau",
+        "schrauber", "gym staff", "hallenmitarbeiter", "teammitglied",
+        "verstärkung", "mitarbeiter"
+      ],
+      "search_terms": [
+        "bouldering gym jobs", "boulderhalle stellenangebote",
+        "climbing gym jobs", "routesetter jobs", "routenschrauber jobs",
+        "klettertrainer jobs"
       ],
       "remote": false,
       "location": "Berlin",
@@ -214,7 +237,13 @@
       {"name": "Reed UK", "url": "https://www.reed.co.uk/jobs/developer-jobs?q=developer", "location": "United Kingdom", "remote": false},
       {"name": "ImpactPool Germany", "url": "https://www.impactpool.org/countries/Germany", "location": "Germany", "remote": false},
       {"name": "EnglishJobs Berlin", "url": "https://englishjobs.de/in/berlin", "location": "Berlin", "remote": false},
-      {"name": "Stepstone EU Berlin", "url": "https://www.stepstone.de/jobs/europ%C3%A4ische-union/in-berlin", "location": "Berlin", "remote": false}
+      {"name": "Stepstone EU Berlin", "url": "https://www.stepstone.de/jobs/europ%C3%A4ische-union/in-berlin", "location": "Berlin", "remote": false},
+      {"name": "Element Boulders Berlin", "url": "https://berlin.element-boulders.de/das-element/jobs.html", "location": "Berlin", "remote": false},
+      {"name": "Berta Block", "url": "https://www.bertablock.de/jobs", "location": "Berlin", "remote": false},
+      {"name": "Cliffhanger Berlin", "url": "https://www.cliffhanger-berlin.de/stellenangebote/", "location": "Berlin", "remote": false},
+      {"name": "Magic Mountain Berlin", "url": "https://www.magicmountain.de/2025/07/kolleginnen-gesucht/", "location": "Berlin", "remote": false},
+      {"name": "Klettermax Berlin", "url": "https://dev.klettermax.berlin/jobs", "location": "Berlin", "remote": false},
+      {"name": "BergWerk Berlin", "url": "https://bergwerk.berlin/info/jobs.html", "location": "Berlin", "remote": false}
     ],
     "extract_seeds": [
       {"url": "https://berlinstartupjobs.com/engineering/", "location": "Berlin", "remote": false}

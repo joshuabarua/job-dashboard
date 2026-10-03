@@ -95,12 +95,18 @@ class TestFetchWebsearch(unittest.TestCase):
             jobs = list(jobsearch._fetch_websearch())
 
         expected = sum(
-            len(config.search_targets(cfg["remote"]))
+            len(cfg.get("search_terms") or [cfg["keywords"][0]])
+            * len(config.search_targets(cfg["remote"]))
             for cfg in jobsearch.TRACKS.values())
         self.assertEqual(len(queries), expected)
         for q in queries:
             self.assertTrue(any(t in q for t in config.search_targets(True)),
                             f"no geo target in query {q!r}")
+        self.assertIn("application support engineer jobs Berlin", queries)
+        self.assertIn("application support engineer jobs United Kingdom",
+                      queries)
+        self.assertIn("bouldering gym jobs Berlin", queries)
+        self.assertNotIn("bouldering gym jobs jobs Berlin", queries)
 
         by_title = {}
         for j in jobs:
@@ -121,6 +127,27 @@ class TestFetchWebsearch(unittest.TestCase):
         self.assertTrue(germany["remote"])
 
         self.assertTrue(all(j["_source"] == "websearch" for j in jobs))
+
+    def test_bouldering_search_terms(self):
+        cfg = jobsearch.TRACKS["Bouldering Gyms"]
+        queries = []
+
+        def fake_search(query, limit=10):
+            queries.append(query)
+            return []
+
+        with patch.object(jobsearch, "TRACKS",
+                          {"Bouldering Gyms": cfg}), \
+                patch.object(websearch, "search", fake_search):
+            list(jobsearch._fetch_websearch())
+
+        terms = cfg["search_terms"]
+        targets = config.search_targets(cfg["remote"])
+        self.assertEqual(len(queries), len(terms) * len(targets))
+        self.assertEqual(len(queries), 12)
+        for term in terms:
+            self.assertIn(f"{term} Berlin", queries)
+            self.assertIn(f"{term} United Kingdom", queries)
 
 
 class _FakeResp:
@@ -400,8 +427,10 @@ class TestCollectWithReport(unittest.TestCase):
 
 
 class TestNewTracks(unittest.TestCase):
-    def first_track(self, title, location="Berlin", remote=False):
-        j = job(title=title, location=location, remote=remote)
+    def first_track(self, title, location="Berlin", remote=False,
+                    company=""):
+        j = job(title=title, location=location, remote=remote,
+                company=company)
         if jobsearch._rejected(j):
             return None
         for name, cfg in jobsearch.TRACKS.items():
@@ -451,6 +480,73 @@ class TestNewTracks(unittest.TestCase):
             for loc in ["Remote - US", "Remote - Canada"]:
                 self.assertFalse(jobsearch._location_ok(
                     job(location=loc, remote=True), cfg), loc)
+
+    def test_bouldering_role_titles(self):
+        for title in ["Routesetter Berlin",
+                      "Routenschrauber (m/w/d) Berlin",
+                      "Bouldering Coach Berlin"]:
+            self.assertEqual(self.first_track(title), "Bouldering Gyms",
+                             title)
+
+    def test_bouldering_known_gym_company(self):
+        self.assertEqual(
+            self.first_track("Front Desk Mitarbeiter",
+                             company="Element Boulders Berlin"),
+            "Bouldering Gyms")
+        self.assertNotEqual(
+            self.first_track("Front Desk Mitarbeiter",
+                             company="Generic Hotel"),
+            "Bouldering Gyms")
+        self.assertEqual(
+            self.first_track("Service/Theke", company="Berta Block"),
+            "Bouldering Gyms")
+        self.assertNotEqual(
+            self.first_track("Service/Theke",
+                             company="Generic Cafe Mitte"),
+            "Bouldering Gyms")
+
+    def test_bare_climbing_no_match(self):
+        self.assertNotEqual(
+            self.first_track("Climbing Instructor",
+                             company="Summer Camp"),
+            "Bouldering Gyms")
+
+    def test_bouldering_hours_rejected(self):
+        for title in ["Minijob Bouldering Coach Berlin",
+                      "Teilzeit Routesetter Berlin"]:
+            self.assertIsNotNone(jobsearch._rejected(
+                job(title=title, location="Berlin")), title)
+
+
+class TestContextualMatch(unittest.TestCase):
+    CFG = jobsearch.TRACKS["Bouldering Gyms"]
+
+    def test_known_gym_role_matches(self):
+        hits = jobsearch._matches(
+            job(title="Front Desk Mitarbeiter",
+                company="Element Boulders Berlin"), self.CFG)
+        self.assertIn("front desk", hits)
+
+    def test_generic_company_role_fails(self):
+        self.assertEqual(jobsearch._matches(
+            job(title="Front Desk Mitarbeiter", company="Generic Hotel"),
+            self.CFG), [])
+
+    def test_junk_titles_at_known_gym_fail(self):
+        for company in ["Berta Block", "Element Boulders Berlin"]:
+            for title in ["Kurse", "Kontakt", "Preise", "Jobs"]:
+                self.assertEqual(jobsearch._matches(
+                    job(title=title, company=company), self.CFG), [],
+                    f"{title} at {company}")
+
+    def test_role_cannot_come_from_company(self):
+        self.assertEqual(jobsearch._matches(
+            job(title="Kurse", company="Front Desk Element Boulders"),
+            self.CFG), [])
+
+    def test_direct_keyword_still_matches(self):
+        hits = jobsearch._matches(job(title="Routesetter Berlin"), self.CFG)
+        self.assertIn("routesetter", hits)
 
 
 class TestDbFetchAll(unittest.TestCase):

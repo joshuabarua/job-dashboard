@@ -51,7 +51,10 @@ Everything personal lives in `config.json`. No code edits needed.
       "remote": true,                                   // remote jobs OK for this track
       "location": "Berlin",                             // used for on-site search queries + labels
       "cv": "Frontend CV",                              // which CV to apply with (label only)
-      "color": "info"                                   // accent | info | success | danger
+      "color": "info",                                  // accent | info | success | danger
+      "search_terms": ["bouldering gym jobs"],          // optional: query terms fanned out per geo target (defaults to keywords[0])
+      "context_keywords": ["element boulders"],         // optional: venue/employer identities — only count with role_keywords
+      "role_keywords": ["front desk", "trainer"]        // optional: generic roles allowed at a context match (title/tags only)
     }
   },
   "reject": {
@@ -91,12 +94,26 @@ Tips:
 - `tracks` order = sidebar order in the dashboard. First matching track wins.
 - `geo_groups` is the geo allowlist: a group passes on-site jobs when
   `onsite: true`, remote jobs when `remote: true`. Web queries run once per
-  track per enabled group label — `{keyword} remote jobs {label}` for remote
-  tracks, `{keyword} jobs {label}` for on-site tracks. **No track or query
+  track per enabled group label — `{term} remote jobs {label}` for remote
+  tracks, `{term} jobs {label}` for on-site tracks; tracks with optional
+  `search_terms` fan out each term per target (`{term} remote jobs {label}`
+  or `{term} {label}` — custom terms should carry their own `jobs` wording).
+  **No track or query
   location is ever copied into a result** — a job's location must come from
   evidence in the job's own location/title/snippet, and its board/seed scope.
 - Boards and extract seeds declare their truthful scope (`location`,
   `remote`); scraped/mined links inherit it and must still pass geo matching.
+  Direct employer career pages are fine as boards — but only when the page
+  is genuinely scoped to that location; a page listing jobs across regions
+  must not claim a city it doesn't serve.
+- Track `keywords` match directly in title or company. `context_keywords` +
+  `role_keywords` are a pair: a generic title (e.g. "Front Desk") only
+  matches when a context identity (a known gym) appears in title/company/tags
+  AND a role phrase appears in title/tags — so nav/junk page text at a known
+  employer never matches on identity alone, and the role never comes from
+  the company field.
+- Global reject rules apply to every track: `minijob`/`teilzeit`/part-time
+  titles are dropped even for gym and hospitality roles.
 - Delete tracks you don't need; add as many as you like.
 - Non-Germany users: set `"arbeitsagentur": false` and clean the German terms
   out of `reject`.

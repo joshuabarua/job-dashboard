@@ -44,6 +44,30 @@ class TestConfigValidation(unittest.TestCase):
                  {"label": "G", "terms": ["h"], "onsite": True,
                   "remote": True}]}},
             {"tracks": {"T": {"keywords": ["k"], "remote": True,
+                              "cv": "x", "color": "y",
+                              "search_terms": []}},
+             "locations": {"geo_groups": [
+                 {"label": "G", "terms": ["g"], "onsite": True,
+                  "remote": True}]}},
+            {"tracks": {"T": {"keywords": ["k"], "remote": True,
+                              "cv": "x", "color": "y",
+                              "search_terms": ["ok", ""]}},
+             "locations": {"geo_groups": [
+                 {"label": "G", "terms": ["g"], "onsite": True,
+                  "remote": True}]}},
+            {"tracks": {"T": {"keywords": ["k"], "remote": True,
+                              "cv": "x", "color": "y",
+                              "context_keywords": []}},
+             "locations": {"geo_groups": [
+                 {"label": "G", "terms": ["g"], "onsite": True,
+                  "remote": True}]}},
+            {"tracks": {"T": {"keywords": ["k"], "remote": True,
+                              "cv": "x", "color": "y",
+                              "role_keywords": ["x", 1]}},
+             "locations": {"geo_groups": [
+                 {"label": "G", "terms": ["g"], "onsite": True,
+                  "remote": True}]}},
+            {"tracks": {"T": {"keywords": ["k"], "remote": True,
                               "cv": "x", "color": "y"}},
              "locations": {"geo_groups": [
                  {"label": "G", "terms": ["g"], "onsite": True,

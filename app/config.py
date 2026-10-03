@@ -34,6 +34,12 @@ def validate(data):
                  f"{path}.keywords: must be a non-empty list of strings")
         _require(isinstance(cfg.get("remote"), bool),
                  f"{path}.remote: must be a boolean")
+        for field in ("search_terms", "context_keywords", "role_keywords"):
+            val = cfg.get(field)
+            if val is not None:
+                _require(_nonempty_str_list(val),
+                         f"{path}.{field}: must be a non-empty list "
+                         "of strings")
         for field in ("cv", "color"):
             _require(_nonempty_str(cfg.get(field)),
                      f"{path}.{field}: must be a non-empty string")
