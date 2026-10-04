@@ -604,7 +604,9 @@ class TestBuildStatic(unittest.TestCase):
         def boom(strict=False):
             raise RuntimeError("Supabase not configured")
 
-        with patch.object(build_static.tracker, "get_jobs", boom):
+        env = {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_KEY_PUBLIC": "sb_publishable_test"}
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(build_static.tracker, "get_jobs", boom):
             with self.assertRaises(RuntimeError):
                 build_static.build()
 
