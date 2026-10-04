@@ -37,6 +37,14 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests -v
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test static dashboard status updates
+        run: node --test tests/test_static_status.cjs
+
       - name: Refresh job listings
         run: python scripts/run_search.py
         env:

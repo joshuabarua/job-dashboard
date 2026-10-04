@@ -233,6 +233,15 @@ Setup:
 Your dashboard appears at `https://<username>.github.io/<repo>/`. Status
 updates from the static site write back through the publishable key.
 
+Troubleshooting: if marking a job Applied fails with
+`Update failed: {"message":"No API key found in request","hint":"No `apikey` request header or url param was found."}`,
+the site was built without `SUPABASE_KEY_PUBLIC`. Set it in your local
+`.env` and in Settings → Secrets and variables → Actions, then rerun
+`python scripts/build_static.py` (locally) or the heartbeat workflow
+(GitHub) to rebuild and redeploy. The publishable/anon key is meant to
+ship in `public/`; never use `SUPABASE_SERVICE_KEY` or an `sb_secret_`
+key there — `build_static.py` refuses to embed them.
+
 ### b) Render (live dashboard, Docker)
 
 The included `Dockerfile` and `render.yaml` deploy the FastAPI app.
