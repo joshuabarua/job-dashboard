@@ -107,6 +107,13 @@ class TestFetchWebsearch(unittest.TestCase):
                       queries)
         self.assertIn("bouldering gym jobs Berlin", queries)
         self.assertNotIn("bouldering gym jobs jobs Berlin", queries)
+        self.assertIn("frontend developer remote jobs Berlin", queries)
+        self.assertIn("react native developer remote jobs Berlin", queries)
+        self.assertIn("full stack developer remote jobs Berlin", queries)
+        self.assertIn("node.js developer remote jobs United Kingdom",
+                      queries)
+        for q in queries:
+            self.assertNotIn("jobs remote jobs", q)
 
         by_title = {}
         for j in jobs:
@@ -547,6 +554,22 @@ class TestContextualMatch(unittest.TestCase):
     def test_direct_keyword_still_matches(self):
         hits = jobsearch._matches(job(title="Routesetter Berlin"), self.CFG)
         self.assertIn("routesetter", hits)
+
+    def test_full_stack_developer_matches_developer_track(self):
+        hits = jobsearch._matches(job(title="Full Stack Developer"),
+                                  jobsearch.TRACKS["Developer"])
+        self.assertIn("full stack", hits)
+
+    def test_mobile_application_developer_matches_frontend_track(self):
+        hits = jobsearch._matches(
+            job(title="Mobile Application Developer"),
+            jobsearch.TRACKS["Frontend Engineer"])
+        self.assertIn("mobile application developer", hits)
+
+    def test_gsap_developer_matches_frontend_track(self):
+        hits = jobsearch._matches(job(title="GSAP Developer"),
+                                  jobsearch.TRACKS["Frontend Engineer"])
+        self.assertIn("gsap", hits)
 
 
 class TestDbFetchAll(unittest.TestCase):

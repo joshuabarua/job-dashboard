@@ -34,7 +34,11 @@
         "front-end developer", "frontend", "front-end", "react engineer",
         "react developer", "typescript", "react", "vue", "next.js",
         "nextjs", "tailwind", "react native", "react-native", "expo",
-        "zustand", "remix", "svelte", "tanstack", "redux"
+        "zustand", "remix", "svelte", "tanstack", "redux", "gsap",
+        "mobile app developer", "mobile application developer"
+      ],
+      "search_terms": [
+        "frontend developer", "react native developer"
       ],
       "remote": true,
       "location": "Berlin (hybrid)/Remote",
@@ -119,11 +123,14 @@
     },
     "Developer": {
       "keywords": [
-        "software engineer", "software developer", "fullstack",
+        "software engineer", "software developer", "fullstack", "full stack",
         "full-stack", "node.js", "nodejs", "javascript", "web developer",
         "backend", "back-end", "backend engineer", "typescript",
         "react", "trpc", "hono", "graphql", "prisma", "express",
         "nest.js", "nestjs", "node"
+      ],
+      "search_terms": [
+        "full stack developer", "node.js developer"
       ],
       "remote": true,
       "location": "Berlin (hybrid)/Remote",
@@ -253,6 +260,9 @@
     "typescript", "ts", "javascript", "react", "react native", "next",
     "next.js", "trpc", "hono", "zustand", "tailwind", "node", "nodejs",
     "vue", "expo", "remix", "svelte", "graphql", "prisma", "fullstack",
-    "frontend"
+    "frontend", "full stack", "html", "css", "gsap", "redux",
+    "tailwind css", "node.js", "express", "firebase", "sql", "mysql",
+    "convex", "mongodb", "supabase", "postgres", "postgresql",
+    "cloudflare", "jenkins", "docker", "git", "playwright", "better auth"
   ]
 }
