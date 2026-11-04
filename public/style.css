@@ -241,6 +241,22 @@ select:focus, input:focus { outline: 1px solid var(--accent); border-color: var(
 }
 @keyframes blink { 50% { opacity: 0.3; } }
 
+.funnel { display: flex; flex-direction: column; gap: 5px; padding: 4px 8px; }
+.funnel-row { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 10px; }
+.funnel-label { width: 76px; flex-shrink: 0; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+.funnel-bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.funnel-bar i { display: block; height: 100%; background: var(--accent); }
+.funnel-count { width: 40px; text-align: right; color: var(--text); flex-shrink: 0; }
+
+.fit-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.fit-chip {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+  padding: 2px 6px; border-radius: 3px; border: 1px solid var(--border);
+}
+.fit-chip.fit-score { color: var(--accent); border-color: var(--accent); }
+.fit-chip.fit-have { color: var(--success); border-color: var(--success); }
+.fit-chip.fit-gap { color: var(--danger); border-color: var(--danger); }
+
 /* ---------- DRAWER ---------- */
 .drawer-scrim {
   position: fixed; inset: 0; background: oklch(0 0 0 / 0.55); z-index: 40;

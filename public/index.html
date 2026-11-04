@@ -71,6 +71,21 @@
       </label>
     </div>
 
+    <div class="sidebar-section" x-show="report">
+      <div class="section-head"><span>LAST SEARCH</span></div>
+      <div class="funnel">
+        <template x-for="row in funnelRows" :key="row.key">
+          <div class="funnel-row" :title="row.tip">
+            <span class="funnel-label" x-text="row.label"></span>
+            <div class="funnel-bar"><i :style="'width:' + row.pct + '%'"></i></div>
+            <span class="funnel-count" x-text="row.count"></span>
+          </div>
+        </template>
+      </div>
+      <div class="muted small" style="padding:2px 8px"
+           x-text="report && report.generated_at ? 'generated ' + new Date(report.generated_at).toLocaleString('en-GB') : ''"></div>
+    </div>
+
     <div class="sidebar-foot">
       <span class="muted">Static site &middot; Updated by Actions</span>
     </div>
@@ -109,8 +124,9 @@
           <div class="card-meta">
             <span class="meta" x-text="job.location"></span>
             <span class="meta" x-show="job.date" x-text="job.date ? new Date(job.date).toLocaleDateString('en-GB') : ''"></span>
-            <span class="meta score" x-show="job.match_score !== ''" title="Match score 0–10: keyword fit, remote, and location bonuses">score <b x-text="job.match_score"></b></span>
+            <span class="meta score" x-show="job.match_score !== ''" title="Match score 0–10: title keywords, location bonus, resume fit">score <b x-text="job.match_score"></b></span>
           </div>
+          <div class="cand-why muted small" x-show="job.why_fit" x-text="job.why_fit"></div>
           <div class="card-flags">
             <span class="flag" x-show="job._dup_flag">DUPLICATE</span>
             <span class="flag" x-show="job.status !== 'New'">&#10003; <span x-text="job.status"></span></span>
@@ -130,6 +146,25 @@
 const SUPABASE_URL = "https://cvowlyauaovtdnobdaci.supabase.co";
 const SUPABASE_KEY = "sb_publishable_LNyUShI7zEixUQWDFsLbjw_kFLA0wQM";
 
+const FUNNEL_STAGES = [
+  ["fetched", "Fetched"], ["hygiene", "Hygiene"], ["location", "Location"],
+  ["title", "Title"], ["fit", "Resume fit"],
+];
+
+function buildFunnelRows(report) {
+  const f = (report && report.funnel) || {};
+  const base = f.fetched || 0;
+  return FUNNEL_STAGES.map(([key, label]) => {
+    const reasons = (report && report.rejected && report.rejected[key]) || {};
+    const tip = Object.entries(reasons)
+      .sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([k, v]) => `${k} (${v})`).join("\n");
+    const count = f[key] || 0;
+    return { key, label, count, tip,
+             pct: base ? Math.round(100 * count / base) : 0 };
+  });
+}
+
 function cmd() {
   return {
     version: "v1.1",
@@ -138,6 +173,7 @@ function cmd() {
     track: null, selStatus: null, statusAll: true, loc: "", q: "", showDupes: false, showApplied: false, sort: "date",
     total: 0, loading: true,
     trackColors: {},
+    report: null, funnelRows: [],
 
     async init() {
       const [meta, stats, jobs] = await Promise.all([
@@ -157,6 +193,16 @@ function cmd() {
       this.jobs = jobs;
       this.loading = false;
       this.update();
+      this.loadReport();
+    },
+
+    async loadReport() {
+      try {
+        const r = await fetch("report.json");
+        if (!r.ok) return;
+        this.report = await r.json();
+        this.funnelRows = buildFunnelRows(this.report);
+      } catch (e) {}
     },
 
     update() {
