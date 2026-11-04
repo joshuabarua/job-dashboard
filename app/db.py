@@ -45,18 +45,30 @@ def _row_to_job(row):
     return j
 
 
+_PAGE_SIZE = 1000
+
+
 def fetch_all():
     if not ENABLED or client is None:
         return []
     try:
-        resp = client.table("jobs").select("*").execute()
-        rows = resp.data or []
-        return [_row_to_job(r) for r in rows]
+        jobs = []
+        offset = 0
+        while True:
+            resp = (client.table("jobs").select("*")
+                    .range(offset, offset + _PAGE_SIZE - 1).execute())
+            rows = resp.data or []
+            jobs.extend(_row_to_job(r) for r in rows)
+            if len(rows) < _PAGE_SIZE:
+                break
+            offset += _PAGE_SIZE
+        return jobs
     except Exception as exc:
         raise RuntimeError(f"fetch_all failed: {exc}") from exc
 
 
 def insert(job):
+    """Insert a row; returns 'ok', 'duplicate' on unique violation, or raises."""
     if not ENABLED or client is None:
         raise RuntimeError("Supabase not configured")
     row = _row_to_job(job)
@@ -64,7 +76,10 @@ def insert(job):
     try:
         client.table("jobs").insert(row).execute()
     except Exception as exc:
+        if "23505" in str(exc) or "duplicate key" in str(exc):
+            return "duplicate"
         raise RuntimeError(f"insert failed: {exc}") from exc
+    return "ok"
 
 
 def update_status(identifier, status):

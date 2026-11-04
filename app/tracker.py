@@ -49,7 +49,9 @@ def add_job(candidate, check_duplicate=True):
         "application_strategy": candidate.get("application_strategy", ""),
         "tags": candidate.get("tags", "")
     })
-    db.insert(row)
+    res = db.insert(row)
+    if res != "ok":
+        return False, f"Duplicate: {res}"
     return True, "ok"
 
 

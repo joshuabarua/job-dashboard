@@ -813,6 +813,56 @@ class TestDbFetchAll(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "fetch_all failed"):
                 db.fetch_all()
 
+    def test_fetch_all_paginates_past_page_cap(self):
+        calls = []
+
+        class _Q:
+            def select(self, *a, **k):
+                return self
+
+            def range(self, s, e):
+                self._s, self._e = s, e
+                return self
+
+            def execute(self):
+                calls.append((self._s, self._e))
+                rows = [{"job_title": f"j{i}", "id": i}
+                        for i in range(self._s, min(self._e + 1, 1205))]
+                return type("_Resp", (), {"data": rows})()
+
+        class _Client2:
+            def table(self, name):
+                return _Q()
+
+        with patch.object(db, "ENABLED", True), \
+                patch.object(db, "client", _Client2()):
+            jobs = db.fetch_all()
+        self.assertEqual(len(jobs), 1205)
+        self.assertEqual(calls, [(0, 999), (1000, 1999)])
+
+    def test_insert_duplicate_url_reports_not_raises(self):
+        class _Q:
+            def insert(self, row):
+                return self
+
+            def execute(self):
+                raise Exception(
+                    "duplicate key value violates unique constraint "
+                    '"jobs_url_key" (23505)')
+
+        class _Client:
+            def table(self, name):
+                return _Q()
+
+        with patch.object(db, "ENABLED", True), \
+                patch.object(db, "client", _Client()):
+            self.assertEqual(db.insert({"job_title": "x", "url": "u"}),
+                             "duplicate")
+            ok, msg = tracker.add_job(
+                {"job_title": "x", "url": "u"}, check_duplicate=False)
+            self.assertFalse(ok)
+            self.assertIn("Duplicate", msg)
+
     def test_fetch_disabled_returns_empty(self):
         with patch.object(db, "ENABLED", False), \
                 patch.object(db, "client", None):
