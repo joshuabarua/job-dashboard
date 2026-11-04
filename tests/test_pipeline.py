@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -25,53 +26,60 @@ def job(title="", location="", remote=False,
 
 
 class TestRejected(unittest.TestCase):
-    def assertRejected(self, j):
-        self.assertIsNotNone(jobsearch._rejected(j), j["job_title"])
+    TRACKS = list(jobsearch.TRACKS)
 
-    def assertNotRejected(self, j):
-        self.assertIsNone(jobsearch._rejected(j), j["job_title"])
+    def assertTitleRejected(self, j):
+        self.assertIsNotNone(jobsearch._title_reject(j), j["job_title"])
+
+    def assertTitleOk(self, j):
+        self.assertIsNone(jobsearch._title_reject(j), j["job_title"])
 
     def test_skill_rejects(self):
         for title in ["Java Developer", "Golang Engineer", "Go Developer",
                       "C++ Engineer", "C# Developer", ".NET Developer"]:
-            self.assertRejected(job(title=title))
+            self.assertTitleRejected(job(title=title))
 
     def test_skill_lookalikes_pass(self):
         for title in ["JavaScript Developer", "React Developer",
                       "Typescript Frontend Engineer"]:
-            self.assertNotRejected(job(title=title))
+            self.assertTitleOk(job(title=title))
 
     def test_seniority_boundary_rejects(self):
         for title in ["Sr. Frontend Developer", "SR Frontend Developer",
                       "Senior Frontend Developer"]:
-            self.assertRejected(job(title=title))
+            self.assertTitleRejected(job(title=title))
 
     def test_boundary_lookalikes_pass(self):
         for title in ["SRE Engineer", "C10 Developer"]:
-            self.assertNotRejected(job(title=title))
+            self.assertTitleOk(job(title=title))
 
     def test_rejected_host(self):
-        self.assertRejected(job(
+        self.assertIsNotNone(jobsearch._hygiene_reject(job(
             title="Frontend Engineer",
-            url="https://www.ziprecruiter.com/jobs/frontend-engineer-1"))
+            url="https://www.ziprecruiter.com/jobs/frontend-engineer-1")))
 
     def test_place_text_rejects(self):
         for title in ["Boulder Valley School District Teacher",
                       "BVSD Para Educator", "City of Boulder Colorado Staff",
                       "Columbus Climbing Instructor", "Ohio Gym Manager"]:
-            self.assertRejected(job(title=title))
+            reason, _ = jobsearch._location_reject(
+                job(title=title), self.TRACKS)
+            self.assertIsNotNone(reason, title)
 
     def test_bouldering_berlin_passes(self):
         for title in ["Boulderwelt Berlin Route Setter",
                       "Bouldering Coach Berlin"]:
-            self.assertNotRejected(job(title=title))
+            reason, _ = jobsearch._location_reject(
+                job(title=title, location="Berlin"), self.TRACKS)
+            self.assertIsNone(reason, title)
 
     def test_question_and_seo_titles(self):
         for title in ["What is a Frontend Engineer",
                       "How to become a developer",
                       "Frontend Developer Jobs in Berlin",
                       "Software Engineer jobs"]:
-            self.assertRejected(job(title=title))
+            self.assertIsNotNone(
+                jobsearch._hygiene_reject(job(title=title)), title)
 
 
 class TestFetchWebsearch(unittest.TestCase):
@@ -122,8 +130,9 @@ class TestFetchWebsearch(unittest.TestCase):
         columbus = by_title["Climbing Instructor Columbus Ohio"]
         self.assertEqual(columbus["location"], "")
         self.assertFalse(columbus["remote"])
-        for cfg in jobsearch.TRACKS.values():
-            self.assertFalse(jobsearch._location_ok(columbus, cfg))
+        reason, _ = jobsearch._location_reject(
+            columbus, list(jobsearch.TRACKS))
+        self.assertIsNotNone(reason)
 
         berlin = by_title["Frontend Engineer Berlin"]
         self.assertEqual(berlin["location"], "Berlin")
@@ -274,11 +283,16 @@ class TestCollectWithReport(unittest.TestCase):
         self.assertEqual(len(result.candidates), 1)
         self.assertEqual(result.report.fetched, {"fake": 2})
         self.assertEqual(result.report.accepted, {"fake": 1})
-        self.assertEqual(result.report.rejected, {"Location": 1})
+        self.assertEqual(result.report.rejected,
+                         {"location": {"No geo evidence": 1}})
+        self.assertEqual(result.report.funnel,
+                         {"fetched": 2, "hygiene": 2, "location": 1,
+                          "title": 1, "fit": 1})
         self.assertEqual(result.report.errors, {})
         rendered = json.loads(result.report.render())
         self.assertEqual(set(rendered),
-                         {"fetched", "accepted", "rejected", "errors"})
+                         {"fetched", "accepted", "rejected", "funnel",
+                          "errors"})
         self.assertEqual(result.report.render(), result.report.render())
 
     def test_missing_vs_duplicate_url(self):
@@ -299,8 +313,9 @@ class TestCollectWithReport(unittest.TestCase):
 
         self.assertEqual(result.report.fetched, {"fake": 3})
         self.assertEqual(result.report.accepted, {"fake": 1})
-        self.assertEqual(result.report.rejected["Missing URL"], 1)
-        self.assertEqual(result.report.rejected["Duplicate URL"], 1)
+        self.assertEqual(result.report.rejected["hygiene"]["Missing URL"], 1)
+        self.assertEqual(result.report.rejected["hygiene"]["Duplicate URL"],
+                         1)
 
     def test_single_db_snapshot(self):
         snapshot = [{"job_title": "existing", "status": "New"}]
@@ -438,14 +453,10 @@ class TestNewTracks(unittest.TestCase):
                     company=""):
         j = job(title=title, location=location, remote=remote,
                 company=company)
-        if jobsearch._rejected(j):
-            return None
-        for name, cfg in jobsearch.TRACKS.items():
-            if not jobsearch._location_ok(j, cfg):
-                continue
-            if jobsearch._matches(j, cfg):
-                return name
-        return None
+        cand, _ = jobsearch._evaluate(
+            j, j["url"], "test", list(jobsearch.TRACKS),
+            jobsearch.SearchReport())
+        return cand["track"] if cand else None
 
     def test_graduate_consultant_track(self):
         self.assertEqual(
@@ -465,7 +476,7 @@ class TestNewTracks(unittest.TestCase):
 
     def test_senior_consultant_rejected(self):
         j = job(title="Senior Technology Consultant", location="Berlin")
-        self.assertIsNotNone(jobsearch._rejected(j))
+        self.assertIsNotNone(jobsearch._title_reject(j))
         self.assertIsNone(self.first_track("Senior Technology Consultant"))
 
     def test_generic_titles_no_match(self):
@@ -479,14 +490,19 @@ class TestNewTracks(unittest.TestCase):
                       "IT Security Trainee"):
             cfg = jobsearch.TRACKS[track]
             self.assertTrue(cfg["remote"])
-            self.assertTrue(jobsearch._location_ok(
-                job(location="Berlin"), cfg), track)
+            reason, eligible = jobsearch._location_reject(
+                job(location="Berlin"), [track])
+            self.assertIsNone(reason, track)
+            self.assertEqual(eligible, [track])
             for loc in ["Remote - Germany", "Remote - UK"]:
-                self.assertTrue(jobsearch._location_ok(
-                    job(location=loc, remote=True), cfg), loc)
+                reason, eligible = jobsearch._location_reject(
+                    job(location=loc, remote=True), [track])
+                self.assertIsNone(reason, loc)
+                self.assertEqual(eligible, [track])
             for loc in ["Remote - US", "Remote - Canada"]:
-                self.assertFalse(jobsearch._location_ok(
-                    job(location=loc, remote=True), cfg), loc)
+                reason, _ = jobsearch._location_reject(
+                    job(location=loc, remote=True), [track])
+                self.assertIsNotNone(reason, loc)
 
     def test_bouldering_role_titles(self):
         for title in ["Routesetter Berlin",
@@ -521,7 +537,7 @@ class TestNewTracks(unittest.TestCase):
     def test_bouldering_hours_rejected(self):
         for title in ["Minijob Bouldering Coach Berlin",
                       "Teilzeit Routesetter Berlin"]:
-            self.assertIsNotNone(jobsearch._rejected(
+            self.assertIsNotNone(jobsearch._title_reject(
                 job(title=title, location="Berlin")), title)
 
 
@@ -572,6 +588,220 @@ class TestContextualMatch(unittest.TestCase):
         self.assertIn("gsap", hits)
 
 
+class TestResumeFit(unittest.TestCase):
+    CV = "Fullstack/Frontend CV"
+    ALL = list(jobsearch.TRACKS)
+
+    def fit(self, text, cv=None):
+        return jobsearch._resume_fit(text, cv or self.CV)
+
+    def evaluate(self, j):
+        report = jobsearch.SearchReport()
+        cand, _ = jobsearch._evaluate(
+            j, j.get("url", ""), "test", self.ALL, report)
+        return cand, report
+
+    def test_full_match(self):
+        f = self.fit("React TypeScript GraphQL Docker")
+        self.assertEqual(f.have, ["react", "typescript", "graphql", "docker"])
+        self.assertEqual(f.gaps, [])
+        self.assertEqual(f.ratio, 1.0)
+
+    def test_gap_heavy_rejected(self):
+        f = self.fit("Java Spring Boot Kotlin AWS React")
+        self.assertEqual(f.have, ["react"])
+        self.assertEqual(len(f.gaps), 4)
+        self.assertAlmostEqual(f.ratio, 0.2)
+        j = job(title="Software Engineer", location="Berlin")
+        j["description"] = "Java Spring Boot Kotlin AWS React"
+        cand, report = self.evaluate(j)
+        self.assertIsNone(cand)
+        self.assertEqual(report.rejected,
+                         {"fit": {"Low resume match": 1}})
+
+    def test_unknown_fit_not_dropped(self):
+        f = self.fit("React Developer")
+        self.assertIsNone(f.ratio)
+        cand, report = self.evaluate(
+            job(title="React Developer", location="Berlin"))
+        self.assertIsNotNone(cand)
+        self.assertIsNone(cand["fit"]["ratio"])
+
+    def test_alias_dedupe(self):
+        f = self.fit("Node.js and NodeJS")
+        self.assertEqual(f.have, ["node.js"])
+        self.assertIsNone(f.ratio)
+
+    def test_javascript_not_java(self):
+        f = self.fit("JavaScript Developer")
+        self.assertIn("javascript", f.have)
+        self.assertNotIn("java", f.gaps)
+
+    def test_stage_ordering(self):
+        cand, report = self.evaluate(
+            job(title="Java Developer", location="New York"))
+        self.assertIsNone(cand)
+        self.assertEqual(report.rejected,
+                         {"location": {"No geo evidence": 1}})
+        cand, report = self.evaluate(
+            job(title="Java Developer", location="Berlin"))
+        self.assertIsNone(cand)
+        self.assertEqual(report.rejected,
+                         {"title": {"Skill: java": 1}})
+
+    def test_score_examples(self):
+        cfg = jobsearch.TRACKS["Developer"]
+        j = job(title="React Developer", remote=True)
+        self.assertEqual(
+            jobsearch._score(["react"], j, cfg,
+                             jobsearch.Fit(["react"], [], 1.0)), 8)
+        self.assertEqual(
+            jobsearch._score(["react"], j, cfg,
+                             jobsearch.Fit(["react"], [], None)), 6)
+
+    def test_config_validation(self):
+        data = json.loads((ROOT / "config.json").read_text())
+        bad_cv = json.loads(json.dumps(data))
+        bad_cv["tracks"]["Developer"]["cv"] = "Nope CV"
+        with self.assertRaisesRegex(ValueError, "config.tracks.Developer.cv"):
+            config.validate(bad_cv)
+        bad_group = json.loads(json.dumps(data))
+        bad_group["resume"]["cvs"]["Frontend CV"]["have"].append("nope")
+        with self.assertRaisesRegex(ValueError, "unknown skill group"):
+            config.validate(bad_group)
+
+    def test_verify_stage(self):
+        def cand(url, title, hits):
+            j = job(title=title, remote=True)
+            return jobsearch._candidate(
+                j, url, "Developer", hits,
+                jobsearch.Fit([], [], None), "test")
+
+        cands = [
+            cand("https://a.example.com/low", "Software Engineer",
+                 ["software engineer"]),
+            cand("https://b.example.com/high", "React Developer", ["react"]),
+        ]
+        bodies = {
+            "https://a.example.com/low": "Java Spring Boot Kotlin AWS",
+            "https://b.example.com/high":
+                "React TypeScript GraphQL Docker CI/CD",
+        }
+        report = jobsearch.SearchReport()
+        with patch.object(jobsearch, "_websearch_enabled", lambda: True), \
+                patch.object(jobsearch.websearch, "requests", object()), \
+                patch.object(websearch, "extract_content",
+                             lambda url, objective: bodies.get(url, "")):
+            out = jobsearch._verify_candidates(cands, report)
+
+        self.assertEqual([c["url"] for c in out],
+                         ["https://b.example.com/high"])
+        self.assertEqual(report.rejected,
+                         {"fit": {"Low resume match (verified)": 1}})
+        high = out[0]
+        self.assertTrue(high["_verified"])
+        self.assertEqual(high["fit"]["ratio"], 1.0)
+        self.assertEqual(high["match_score"], 8)
+
+    def test_arbeitnow_description_stripped(self):
+        payload = {"data": [{
+            "title": "Frontend Dev", "company_name": "Acme",
+            "location": "Berlin", "url": "https://a.example.com/j/1",
+            "tags": [], "remote": False,
+            "description": "<p>Build <b>React</b> apps &amp; more</p>",
+        }]}
+        with patch.object(jobsearch, "_get_json", lambda url: payload):
+            jobs = list(jobsearch._fetch_arbeitnow())
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["description"], "Build React apps & more")
+
+
+class TestLanguageLevel(unittest.TestCase):
+    def check(self, text):
+        return jobsearch._language_check(text)
+
+    def evaluate(self, j):
+        report = jobsearch.SearchReport()
+        cand, _ = jobsearch._evaluate(
+            j, j.get("url", ""), "test", list(jobsearch.TRACKS), report)
+        return cand, report
+
+    def test_rejects(self):
+        for text, reason in [
+            ("German C1", "Language: German C1"),
+            ("Deutschkenntnisse auf C1-Niveau", "Language: German C1"),
+            ("sehr gute Deutschkenntnisse (mind. C1)",
+             "Language: German C1"),
+            ("Deutsch: C1, Englisch: B2", "Language: German C1"),
+            ("German C2", "Language: German C2"),
+            ("Fluent German required", "Language: fluent german"),
+        ]:
+            self.assertEqual(self.check(text).reason, reason, text)
+
+    def test_passes(self):
+        for text, level in [
+            ("German B1", "B1"),
+            ("Deutsch B2", "B2"),
+            ("German B1.2", "B1"),
+            ("German B2-C1", "B2"),
+            ("Englisch C1, Deutsch B1", "B1"),
+            ("German required (B1)", "B1"),
+            ("English C1", None),
+            ("German C1 is a plus", None),
+            ("Fluent German is a nice to have", None),
+            ("Based in Germany, office C1 building", None),
+        ]:
+            r = self.check(text)
+            self.assertIsNone(r.reason, text)
+            self.assertEqual(r.level, level, text)
+
+    def test_bare_level_in_title_passes(self):
+        self.assertIsNone(jobsearch._title_reject(
+            job(title="Frontend Developer (C1)")))
+
+    def test_description_fit_stage(self):
+        j = job(title="React Developer", location="Berlin")
+        j["description"] = "Deutsch C1 erforderlich"
+        cand, report = self.evaluate(j)
+        self.assertIsNone(cand)
+        self.assertEqual(report.rejected,
+                         {"fit": {"Language: German C1": 1}})
+
+        j["description"] = "Deutschkenntnisse B2"
+        cand, report = self.evaluate(j)
+        self.assertIsNotNone(cand)
+        self.assertEqual(cand["fit"]["german"], "B2")
+        self.assertIn("German: B2", cand["why_fit"])
+
+    def test_verify_stage(self):
+        def cand(url, title):
+            return jobsearch._candidate(
+                job(title=title, remote=True), url, "Developer",
+                ["react"], jobsearch.Fit([], [], None), "test")
+
+        cands = [cand("https://a.example.com/c1", "React Developer"),
+                 cand("https://b.example.com/b2", "React Developer")]
+        bodies = {"https://a.example.com/c1": "German C1",
+                  "https://b.example.com/b2": "German B2"}
+        with patch.object(jobsearch, "_websearch_enabled", lambda: True), \
+                patch.object(jobsearch.websearch, "requests", object()), \
+                patch.object(websearch, "extract_content",
+                             lambda url, objective: bodies.get(url, "")):
+            out = jobsearch._verify_candidates(
+                cands, jobsearch.SearchReport())
+        self.assertEqual([c["url"] for c in out],
+                         ["https://b.example.com/b2"])
+        self.assertEqual(out[0]["fit"]["german"], "B2")
+        self.assertIn("German: B2", out[0]["why_fit"])
+
+    def test_config_validation(self):
+        data = json.loads((ROOT / "config.json").read_text())
+        bad = json.loads(json.dumps(data))
+        bad["reject"]["language_level"]["max_level"] = "D1"
+        with self.assertRaisesRegex(ValueError, "max_level"):
+            config.validate(bad)
+
+
 class TestDbFetchAll(unittest.TestCase):
     def test_fetch_error_raises(self):
         class _Boom:
@@ -598,10 +828,13 @@ class TestDbFetchAll(unittest.TestCase):
 
 class TestRunSearch(unittest.TestCase):
     def test_run_propagates(self):
-        with patch.object(jobsearch, "collect_with_report",
-                          side_effect=RuntimeError("boom")):
-            with self.assertRaises(RuntimeError):
-                run_search.run()
+        with tempfile.TemporaryDirectory() as tmp:
+            report_path = Path(tmp) / "report.json"
+            with patch.object(run_search, "REPORT_PATH", report_path), \
+                    patch.object(jobsearch, "collect_with_report",
+                                 side_effect=RuntimeError("boom")):
+                with self.assertRaises(RuntimeError):
+                    run_search.run()
 
     def test_run_skips_recheck(self):
         cand = job(title="React Developer", location="Berlin")
@@ -613,11 +846,18 @@ class TestRunSearch(unittest.TestCase):
             added.append(check_duplicate)
             return True, "ok"
 
-        with patch.object(jobsearch, "collect_with_report",
-                          lambda track=None: result), \
-                patch.object(tracker, "add_job", fake_add):
-            run_search.run()
-        self.assertEqual(added, [False])
+        with tempfile.TemporaryDirectory() as tmp:
+            report_path = Path(tmp) / "report.json"
+            with patch.object(run_search, "REPORT_PATH", report_path), \
+                    patch.object(jobsearch, "collect_with_report",
+                                 lambda track=None: result), \
+                    patch.object(tracker, "add_job", fake_add):
+                run_search.run()
+            self.assertEqual(added, [False])
+            self.assertTrue(report_path.exists())
+            report = json.loads(report_path.read_text())
+            self.assertIn("funnel", report)
+            self.assertIn("generated_at", report)
 
 
 class TestBuildStatic(unittest.TestCase):

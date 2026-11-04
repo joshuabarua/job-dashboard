@@ -232,15 +232,15 @@ def test_pipeline_assertions():
     # seniority regression: these must still reject / pass
     for title in ["Senior Software Engineer (m/f/d)", "Lead Blockchain Engineer",
                   "Head of Technology"]:
-        assert jobsearch._rejected(job(title)), f"seniority not rejected: {title}"
+        assert _rejected(job(title)), f"seniority not rejected: {title}"
     for title in ["Junior React Developer", "Frontend Engineer"]:
-        assert not jobsearch._rejected(job(title)), f"unexpectedly rejected: {title}"
+        assert not _rejected(job(title)), f"unexpectedly rejected: {title}"
 
     # fullstack variants must match Developer and not be rejected
     for title in ["Full Stack Developer", "Fullstack Engineer"]:
-        assert not jobsearch._rejected(job(title)), f"rejected: {title}"
+        assert not _rejected(job(title)), f"rejected: {title}"
         assert jobsearch._matches(job(title), dev), f"no match: {title}"
-    assert jobsearch._rejected(job("Senior Fullstack Developer")), \
+    assert _rejected(job("Senior Fullstack Developer")), \
         "senior fullstack not rejected"
 
     print("[check] pipeline assertions passed: hono boundary, seniority, fullstack")
@@ -252,8 +252,9 @@ def test_location_offline():
         return {"job_title": "x", "company": "", "location": location,
                 "url": "", "tags": [], "remote": remote}
 
-    remote_cfg = {"remote": True}
-    onsite_cfg = {"remote": False}
+    remote_tracks = [t for t, c in jobsearch.TRACKS.items() if c["remote"]]
+    onsite_tracks = [t for t, c in jobsearch.TRACKS.items()
+                     if not c["remote"]]
     ok_onsite = ["Berlin", "London", "Brighton", "Berlin / Hybrid",
                  "London, England", "Manchester", "Glasgow, Scotland"]
     no_onsite = ["Munich", "Munich, Germany", "Hamburg", "Paris", "New York",
@@ -263,26 +264,30 @@ def test_location_offline():
     no_remote = ["Remote", "", "Remote - US only", "Remote (USA)",
                  "Remote - EMEA", "Remote - APAC", "Remote - Australia",
                  "Worldwide", "Europe", "Remote - Columbus Ohio"]
+
+    def location_ok(j, tracks):
+        return jobsearch._location_reject(j, tracks)[0] is None
+
     for loc in ok_onsite:
-        assert jobsearch._location_ok(job(loc), onsite_cfg), \
+        assert location_ok(job(loc), onsite_tracks), \
             f"onsite should pass: {loc}"
     for loc in no_onsite:
-        assert not jobsearch._location_ok(job(loc), onsite_cfg), \
+        assert not location_ok(job(loc), onsite_tracks), \
             f"onsite should fail: {loc}"
     for loc in ok_remote:
-        assert jobsearch._location_ok(job(loc, remote=True), remote_cfg), \
+        assert location_ok(job(loc, remote=True), remote_tracks), \
             f"remote should pass: {loc}"
     for loc in no_remote:
-        assert not jobsearch._location_ok(job(loc, remote=True), remote_cfg), \
+        assert not location_ok(job(loc, remote=True), remote_tracks), \
             f"remote should fail: {loc}"
-    assert not jobsearch._location_ok(job("", remote=True), remote_cfg)
-    assert not jobsearch._location_ok(
-        job("Remote - Berlin", remote=True), onsite_cfg)
-    assert jobsearch._location_ok(
-        job("Remote - Berlin", remote=True), remote_cfg)
-    assert not jobsearch._location_ok(job("Munich, Germany"), onsite_cfg)
-    assert jobsearch._location_ok(
-        job("Remote - Germany", remote=True), remote_cfg)
+    assert not location_ok(job("", remote=True), remote_tracks)
+    assert not location_ok(
+        job("Remote - Berlin", remote=True), onsite_tracks)
+    assert location_ok(
+        job("Remote - Berlin", remote=True), remote_tracks)
+    assert not location_ok(job("Munich, Germany"), onsite_tracks)
+    assert location_ok(
+        job("Remote - Germany", remote=True), remote_tracks)
     print("[check] location rules passed: geo_groups onsite/remote evidence")
 
 
@@ -399,8 +404,16 @@ def test_arbeitsagentur_offline():
         "job_title": "IT Support Engineer (m/w/d)", "company": "Acme GmbH",
         "location": "Berlin",
         "url": "https://www.arbeitsagentur.de/jobsuche/jobdetail/1234-5678-S",
-        "tags": [], "remote": False, "_source": "arbeitsagentur"}], jobs
+        "tags": [], "remote": False, "description": "",
+        "_source": "arbeitsagentur"}], jobs
     print("[check] arbeitsagentur passed: v6 mapping + empty-result tolerance")
+
+
+def _rejected(job):
+    """Old-style content reject: hygiene + false-friend text + title."""
+    return (jobsearch._hygiene_reject(job)
+            or jobsearch._place_text_reject(job)
+            or jobsearch._title_reject(job))
 
 
 def _rejected_count(links):
@@ -408,7 +421,7 @@ def _rejected_count(links):
     for l in links:
         job = {"job_title": l["title"], "company": "", "location": "",
                "url": l["url"], "tags": [], "remote": False}
-        if jobsearch._rejected(job) is None:
+        if _rejected(job) is None:
             n += 1
     return n
 
@@ -462,7 +475,7 @@ def main():
     for r in results:
         job = {"job_title": r["title"], "company": "", "location": "",
                "url": r["url"], "tags": [r["snippet"]], "remote": False}
-        if jobsearch._rejected(job) is None:
+        if _rejected(job) is None:
             surviving += 1
     print(f"\n{surviving}/{len(results)} live results survive search._rejected()")
 

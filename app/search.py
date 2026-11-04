@@ -5,6 +5,7 @@ filters using the same reject rules as the job-search-heartbeat skill, scores
 matches, and marks duplicates against the CSV tracker.
 """
 
+import html as _html
 import json
 import os
 import re
@@ -125,6 +126,12 @@ def _get_json(url):
 
 # --- Sources ---------------------------------------------------------------
 
+def _clean_html(raw):
+    text = re.sub(r"<[^>]+>", " ", raw or "")
+    text = _html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()[:5000]
+
+
 def _fetch_arbeitnow():
     seen = set()
     for page in range(1, 5):
@@ -144,6 +151,7 @@ def _fetch_arbeitnow():
                 "url": url,
                 "tags": j.get("tags") or [],
                 "remote": bool(j.get("remote")),
+                "description": _clean_html(j.get("description")),
                 "_source": "arbeitnow",
             }
 
@@ -159,6 +167,7 @@ def _fetch_remotive():
             "url": j.get("url", ""),
             "tags": j.get("tags") or [],
             "remote": True,
+            "description": _clean_html(j.get("description")),
             "_source": "remotive",
         }
 
@@ -177,6 +186,7 @@ def _fetch_remoteok():
             "url": j.get("url") or j.get("apply_url") or "",
             "tags": j.get("tags") or [],
             "remote": True,
+            "description": _clean_html(j.get("description")),
             "_source": "remoteok",
         }
 
@@ -184,13 +194,17 @@ def _fetch_remoteok():
 def _fetch_jobicy():
     data = _get_json("https://jobicy.com/api/v2/remote-jobs?count=50")
     for j in data.get("jobs", []):
+        industry = j.get("jobIndustry")
         yield {
             "job_title": j.get("jobTitle", ""),
             "company": j.get("companyName", ""),
             "location": j.get("jobGeo") or "Remote",
             "url": j.get("url", ""),
-            "tags": [j.get("jobIndustry")] if j.get("jobIndustry") else [],
+            "tags": industry if isinstance(industry, list)
+            else ([industry] if industry else []),
             "remote": True,
+            "description": _clean_html(
+                j.get("jobDescription") or j.get("jobExcerpt")),
             "_source": "jobicy",
         }
 
@@ -226,6 +240,7 @@ def _fetch_wwr():
                 "url": link,
                 "tags": [],
                 "remote": True,
+                "description": _clean_html(item.findtext("description")),
                 "_source": "weworkremotely",
             }
 
@@ -277,6 +292,7 @@ def _fetch_adzuna():
                     "url": j.get("redirect_url", ""),
                     "tags": [],
                     "remote": remote,
+                    "description": _clean_html(j.get("description")),
                     "_source": "adzuna",
                 }
 
@@ -309,6 +325,7 @@ def _fetch_reed():
                 "url": j.get("jobUrl", ""),
                 "tags": [],
                 "remote": "remote" in f"{title} {loc}".lower(),
+                "description": _clean_html(j.get("jobDescription")),
                 "_source": "reed",
             }
 
@@ -380,6 +397,7 @@ def _fetch_arbeitsagentur():
                 "url": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
                 "tags": [],
                 "remote": False,
+                "description": "",
                 "_source": "arbeitsagentur",
             }
     if attempted and succeeded == 0:
@@ -433,6 +451,7 @@ def _fetch_html_boards():
                     "url": full,
                     "tags": [],
                     "remote": board["remote"],
+                    "description": "",
                     "_source": f"html:{name}",
                 }
         except Exception as e:
@@ -552,28 +571,11 @@ def _matches(job, track_cfg):
     return hits
 
 
-def _rejected(job):
-    t = _norm(job["job_title"])
-    for k in REJECT_TITLE:
-        if _contains_term(t, k):
-            return f"Seniority: {k}"
-    for k in REJECT_HOURS:
-        if k in t:
-            return f"Hours: {k}"
-    tags = _norm(" ".join(job.get("tags", [])))
-    for k in REJECT_LANG:
-        if _contains_term(t, k) or _contains_term(tags, k):
-            return f"Language: {k}"
-    for k in REJECT_SKILLS:
-        if _contains_term(t, k) or _contains_term(tags, k):
-            return f"Skill: {k}"
-    tc = t + " " + _norm(job.get("company", ""))
-    for k in REJECT_TEXT:
-        if _norm(k) in tc:
-            return f"Text: {k}"
-    if re.search(r"\bboulder\b", tc) and not re.search(
-            r"boulder(ing|halle| gym|gym|welt)|climb|kletter", tc):
-        return "Boulder (place, not climbing)"
+STAGES = ("hygiene", "location", "title", "fit")
+
+
+def _hygiene_reject(job):
+    """Stage 0: track-independent junk filters (URL and title patterns)."""
     url = (job.get("url") or "").lower()
     for host in REJECT_HOSTS:
         if host in url:
@@ -586,6 +588,7 @@ def _rejected(job):
         for pat in REJECT_URL_PATTERNS:
             if pat.search(url):
                 return "Aggregator listing page"
+    t = _norm(job["job_title"])
     for pat in REJECT_TITLE_PATTERNS:
         if pat.search(t):
             return "Multi-job listing"
@@ -601,7 +604,7 @@ _REMOTE_RE = re.compile(
 
 
 def _is_remote(job):
-    if job.get("remote"):
+    if job.get("remote") or job.get("_remote"):
         return True
     text = " ".join([
         job.get("job_title") or "",
@@ -611,29 +614,273 @@ def _is_remote(job):
     return bool(_REMOTE_RE.search(text))
 
 
-def _location_ok(job, track_cfg):
+def _place_text_reject(job):
+    """False-friend place names in title/company (Boulder CO & co.)."""
+    tc = _norm(job["job_title"]) + " " + _norm(job.get("company", ""))
+    for k in REJECT_TEXT:
+        if _norm(k) in tc:
+            return f"Text: {k}"
+    if re.search(r"\bboulder\b", tc) and not re.search(
+            r"boulder(ing|halle| gym|gym|welt)|climb|kletter", tc):
+        return "Boulder (place, not climbing)"
+    return None
+
+
+def _location_reject(job, tracks):
+    """Stage 1: false-friend places, remote policy, geo evidence.
+
+    Returns (reason, eligible_tracks); reason is None when the job passes.
+    """
+    reason = _place_text_reject(job)
+    if reason:
+        return reason, []
     remote = _is_remote(job)
-    if remote and not track_cfg["remote"]:
-        return False
+    eligible = [t for t in tracks if not remote or TRACKS[t]["remote"]]
+    if not eligible:
+        return "Remote not wanted", []
     evidence = " ".join([
         job.get("location") or "",
         job.get("job_title") or "",
         " ".join(job.get("tags") or []),
     ])
-    return bool(config.detect_geo(evidence, remote))
+    if not config.detect_geo(evidence, remote):
+        return "No geo evidence", []
+    return None, eligible
 
 
-def _score(hits, job, track_cfg):
-    score = 3 + 2 * len(hits)
-    if track_cfg["remote"] and _is_remote(job):
+def _title_reject(job):
+    """Stage 2a: seniority/hours/language/skill rejects on title and tags."""
+    t = _norm(job["job_title"])
+    for k in REJECT_TITLE:
+        if _contains_term(t, k):
+            return f"Seniority: {k}"
+    for k in REJECT_HOURS:
+        if k in t:
+            return f"Hours: {k}"
+    lang = _language_check(" ".join([
+        job.get("job_title") or "",
+        " ".join(job.get("tags") or [])]))
+    if lang.reason:
+        return lang.reason
+    tags = _norm(" ".join(job.get("tags", [])))
+    for k in REJECT_SKILLS:
+        if _contains_term(t, k) or _contains_term(tags, k):
+            return f"Skill: {k}"
+    return None
+
+
+# --- Language-level check (B1–B2 allowed, C1+ rejected) ----------------------
+
+@dataclass
+class LanguageCheck:
+    reason: str | None
+    level: str | None
+
+
+_LEVEL_ORDER = {lvl: i for i, lvl in
+                enumerate(("a1", "a2", "b1", "b2", "c1", "c2"))}
+_LEVEL_RE = re.compile(
+    r"(?<![a-z0-9])([abc][12])(?:[.,]\d)?(?![a-z0-9])")
+_CLAUSE_SPLIT_RE = re.compile(r"[;!?\n•|]|\.(?!\d)")
+_CLAUSE_ABBREV = {"mind", "min", "bzw", "ca", "ggf", "inkl", "zzgl",
+                  "bspw", "evtl", "etc", "approx"}
+_TARGET_EXCLUDE = {"german": "y", "deutsch": "land"}
+
+_LL = config.language_level()
+
+
+def _lang_prefix_any(terms, excl):
+    pats = []
+    for t in terms:
+        t = (t or "").lower().strip()
+        if not t:
+            continue
+        suffix = excl.get(t, "")
+        pats.append(rf"(?<![a-z0-9]){re.escape(t)}"
+                    + (rf"(?!{suffix})" if suffix else "")
+                    + r"[a-z0-9]*")
+    return re.compile("|".join(pats)) if pats else None
+
+
+def _word_boundary_any(terms):
+    pats = [rf"(?<![a-z0-9]){re.escape(' '.join(t.lower().split()))}"
+            rf"(?![a-z0-9])" for t in terms if t and t.strip()]
+    return re.compile("|".join(pats)) if pats else None
+
+
+_TARGET_LANG_RE = _lang_prefix_any(
+    _LL.get("target_terms") or [], _TARGET_EXCLUDE)
+_OTHER_LANG_RE = _lang_prefix_any(_LL.get("other_terms") or [], {})
+_OPTIONAL_RE = _word_boundary_any(_LL.get("optional_markers") or [])
+
+
+def _clause_spans(text):
+    spans, last = [], 0
+    for m in _CLAUSE_SPLIT_RE.finditer(text):
+        if m.group() == ".":
+            word = re.search(r"([a-z]+)$", text[:m.start()])
+            if word and word.group(1) in _CLAUSE_ABBREV:
+                continue
+        spans.append((last, m.start()))
+        last = m.end()
+    spans.append((last, len(text)))
+    return spans
+
+
+def _language_check(raw):
+    """CEFR-level language gate.
+
+    Returns LanguageCheck(reason, level): reason is set when a required
+    German level exceeds max_level or a reject.language phrase hits; level
+    is the required German level found (e.g. "B2") or None.
+    """
+    text = re.sub(r"\s+", " ", (raw or "").lower())
+    ll = config.language_level()
+    max_level = (ll.get("max_level") or "").lower()
+    max_dist = int(ll.get("max_distance") or 60)
+    spans = _clause_spans(text)
+    german_level = None
+    if _TARGET_LANG_RE is not None:
+        for start, end in spans:
+            clause = text[start:end]
+            if _OPTIONAL_RE and _OPTIONAL_RE.search(clause):
+                continue
+            words = [(m.start(), m.end(), True)
+                     for m in _TARGET_LANG_RE.finditer(clause)]
+            if _OTHER_LANG_RE is not None:
+                words += [(m.start(), m.end(), False)
+                          for m in _OTHER_LANG_RE.finditer(clause)]
+            for m in _LEVEL_RE.finditer(clause):
+                best = None
+                for ws, we, tgt in words:
+                    gap = max(m.start() - we, ws - m.end(), 0)
+                    key = (gap, 0 if we <= m.start() else 1)
+                    if best is None or key < best[0]:
+                        best = (key, tgt)
+                if best and best[0][0] <= max_dist and best[1]:
+                    lvl = m.group(1)
+                    if german_level is None or \
+                            _LEVEL_ORDER[lvl] < _LEVEL_ORDER[german_level]:
+                        german_level = lvl
+    if german_level is not None:
+        if _LEVEL_ORDER[german_level] > _LEVEL_ORDER[max_level]:
+            return LanguageCheck(
+                f"Language: German {german_level.upper()}",
+                german_level.upper())
+        return LanguageCheck(None, german_level.upper())
+    for start, end in spans:
+        clause = text[start:end]
+        if _OPTIONAL_RE and _OPTIONAL_RE.search(clause):
+            continue
+        clause = _norm(clause)
+        for k in REJECT_LANG:
+            if _contains_term(clause, k):
+                return LanguageCheck(f"Language: {k}", None)
+    return LanguageCheck(None, None)
+
+
+# --- Stage 3: resume fit ----------------------------------------------------
+
+@dataclass
+class Fit:
+    have: list[str]
+    gaps: list[str]
+    ratio: float | None
+    german: str | None = None
+
+
+def _alias_pattern(aliases):
+    return re.compile("|".join(
+        rf"(?<![a-z0-9]){re.escape(a)}(?![a-z0-9])"
+        for a in (_norm(x).strip() for x in aliases) if a))
+
+
+def _compile_cv_patterns():
+    resume = config.resume()
+    groups = resume.get("skill_groups") or {}
+    compiled = {}
+    for label, cv in (resume.get("cvs") or {}).items():
+        per_kind = []
+        for kind in ("have", "gaps"):
+            entries = []
+            for grp in cv.get(kind) or []:
+                for aliases in groups.get(grp) or []:
+                    entries.append((aliases[0], _alias_pattern(aliases)))
+            per_kind.append(entries)
+        compiled[label] = per_kind
+    return compiled
+
+
+_CV_PATTERNS = _compile_cv_patterns()
+
+
+def _fit_min_ratio():
+    return float(config.resume().get("min_ratio") or 0.0)
+
+
+def _resume_fit(text, cv_label):
+    """Score a job's text against a CV's have/gap skill groups."""
+    patterns = _CV_PATTERNS.get(cv_label)
+    if not patterns:
+        return Fit([], [], None)
+    text = _norm(text)
+    have_canons = {canon for canon, _ in patterns[0]}
+    extra_have = {}
+    for canon, pat in patterns[1]:
+        if canon in have_canons:
+            extra_have.setdefault(canon, []).append(pat)
+    have, gaps, seen = [], [], set()
+    for canon, pat in patterns[0]:
+        pats = [pat] + extra_have.get(canon, [])
+        if canon not in seen and any(p.search(text) for p in pats):
+            seen.add(canon)
+            have.append(canon)
+    for canon, pat in patterns[1]:
+        if canon in seen or canon in have_canons:
+            continue
+        if pat.search(text):
+            seen.add(canon)
+            gaps.append(canon)
+    detected = len(have) + len(gaps)
+    min_detected = int(config.resume().get("min_detected") or 0)
+    if detected < min_detected:
+        return Fit(have, gaps, None)
+    return Fit(have, gaps, len(have) / detected)
+
+
+def _fit_text(job):
+    return " ".join([
+        job.get("job_title") or "",
+        " ".join(job.get("tags") or []),
+        job.get("description") or "",
+    ])
+
+
+def _score(hits, job, track_cfg, fit):
+    score = 2 + min(len(hits), 3)
+    remote = _is_remote(job)
+    if (track_cfg["remote"] and remote) or (
+            not track_cfg["remote"] and any(
+                c in _norm(job["job_title"]) or
+                c in _norm(job.get("location") or "")
+                for c in _OK_CITIES)):
         score += 1
-    if any(c in _norm(job["job_title"]) for c in _OK_CITIES) and not track_cfg["remote"]:
-        score += 1
+    score += 2 if fit.ratio is None else round(4 * fit.ratio)
     return min(10, score)
 
 
-def _why_fit(job, track, hits):
-    parts = [f"Matches: {', '.join(hits)}" if hits else "Keyword match"]
+def _why_fit(job, track, hits, fit):
+    parts = [f"Title: {', '.join(hits)}" if hits else "Keyword match"]
+    if fit.ratio is None:
+        parts.append("Fit: unknown")
+    else:
+        detail = f"have: {', '.join(fit.have)}"
+        if fit.gaps:
+            detail += f"; missing: {', '.join(fit.gaps)}"
+        parts.append(f"Fit: {len(fit.have)}/{len(fit.have) + len(fit.gaps)}"
+                     f" ({detail})")
+    if fit.german:
+        parts.append(f"German: {fit.german}")
     if _is_remote(job):
         parts.append("remote")
     if job.get("_source"):
@@ -643,6 +890,77 @@ def _why_fit(job, track, hits):
 
 def _strategy(track_cfg):
     return f"Direct apply via link with {track_cfg['cv']}"
+
+
+def _candidate(job, url, track, hits, fit, source):
+    cfg = TRACKS[track]
+    return {
+        "job_title": job["job_title"],
+        "company": job.get("company", ""),
+        "location": job.get("location", ""),
+        "url": url,
+        "track": track,
+        "match_score": _score(hits, job, cfg, fit),
+        "fit": {"have": fit.have, "gaps": fit.gaps, "ratio": fit.ratio,
+                "german": fit.german},
+        "why_fit": _why_fit(job, track, hits, fit),
+        "application_strategy": _strategy(cfg),
+        "recommended_cv": cfg["cv"],
+        "_dup_flag": False,
+        "_source": source,
+        "_remote": _is_remote(job),
+        "_hits": hits,
+    }
+
+
+def _reject(report, stage, reason):
+    counts = report.rejected.setdefault(stage, {})
+    counts[reason] = counts.get(reason, 0) + 1
+
+
+def _evaluate(job, url, src, tracks, report):
+    """Stages 0-3, shared by _collect_sources and _mined_candidate.
+
+    Records funnel/rejected/accepted counts in report. Returns
+    (candidate, hygiene_reason); hygiene_reason is only set for stage-0
+    rejections so the caller can route listing pages to the extract stage.
+    """
+    reason = _hygiene_reject(job)
+    if reason:
+        _reject(report, "hygiene", reason)
+        return None, reason
+    report.funnel["hygiene"] += 1
+    reason, eligible = _location_reject(job, tracks)
+    if reason:
+        _reject(report, "location", reason)
+        return None, None
+    report.funnel["location"] += 1
+    reason = _title_reject(job)
+    if reason:
+        _reject(report, "title", reason)
+        return None, None
+    for t in eligible:
+        hits = _matches(job, TRACKS[t])
+        if not hits:
+            continue
+        report.funnel["title"] += 1
+        cfg = TRACKS[t]
+        desc_check = _language_check(job.get("description"))
+        if desc_check.reason:
+            _reject(report, "fit", desc_check.reason)
+            return None, None
+        fit = _resume_fit(_fit_text(job), cfg["cv"])
+        if fit.ratio is not None and fit.ratio < _fit_min_ratio():
+            _reject(report, "fit", "Low resume match")
+            return None, None
+        fit.german = desc_check.level or _language_check(" ".join([
+            job.get("job_title") or "",
+            " ".join(job.get("tags") or [])])).level
+        report.funnel["fit"] += 1
+        _bump(report.accepted, src)
+        return _candidate(job, url, t, hits, fit, src), None
+    _reject(report, "title", "No track match")
+    return None, None
 
 
 # --- Extract stage: mine job links out of listing pages --------------------
@@ -673,9 +991,15 @@ def _declined_employer(job, declined):
 
 
 def _mined_candidate(link, tracks, seen_urls, declined=None,
-                     location="", remote=False, source="extract"):
+                     location="", remote=False, source="extract",
+                     report=None):
+    report = report or SearchReport()
+    _bump(report.fetched, source)
+    report.funnel["fetched"] += 1
     url = tracker.canonical_url(link.get("url"))
     if not url or url in seen_urls:
+        _reject(report, "hygiene",
+                "Missing URL" if not url else "Duplicate URL")
         return None
     seen_urls.add(url)
     base = {
@@ -688,33 +1012,14 @@ def _mined_candidate(link, tracks, seen_urls, declined=None,
         "_source": source,
     }
     if _declined_employer(base, declined):
+        _reject(report, "hygiene", "Declined employer")
         return None
-    if _rejected(base):
-        return None
-    for t in tracks:
-        cfg = TRACKS[t]
-        if not _location_ok(base, cfg):
-            continue
-        hits = _matches(base, cfg)
-        if not hits:
-            continue
-        return {
-            "job_title": base["job_title"],
-            "company": base["company"],
-            "location": base["location"],
-            "url": url,
-            "track": t,
-            "match_score": _score(hits, base, cfg),
-            "why_fit": _why_fit(base, t, hits),
-            "application_strategy": _strategy(cfg),
-            "recommended_cv": cfg["cv"],
-            "_dup_flag": False,
-            "_source": source,
-        }
-    return None
+    cand, _ = _evaluate(base, url, source, tracks, report)
+    return cand
 
 
-def _extract_stage(listing_scopes, tracks, seen_urls, declined=None):
+def _extract_stage(listing_scopes, tracks, seen_urls, declined=None,
+                   report=None):
     """Extract listing pages and mine jobs; bounded depth-2 facet hop.
 
     Budget: EXTRACT_MAX_PAGES total extract calls (default 25) shared across
@@ -765,7 +1070,7 @@ def _extract_stage(listing_scopes, tracks, seen_urls, declined=None):
                 cand = _mined_candidate(
                     link, tracks, seen_urls, declined,
                     location=scope["location"], remote=scope["remote"],
-                    source=scope["source"])
+                    source=scope["source"], report=report)
                 if cand:
                     found.append(cand)
         if pages >= max_pages:
@@ -783,11 +1088,13 @@ _VERIFY_DEAD_MARKERS = config.reject("dead_markers") or [
 ]
 
 
-def _verify_candidates(candidates):
+def _verify_candidates(candidates, report=None):
     """Extract top-scored candidates' pages; drop dead/German-required ones.
 
     Bounded by EXTRACT_MAX_VERIFY (default 12). Extraction failure is
     inconclusive and keeps the candidate; survivors get '_verified': True.
+    The posting body also recomputes resume fit: a below-threshold fit is
+    dropped, a better read updates fit/score/why_fit.
     """
     if not _websearch_enabled() or websearch.requests is None:
         return candidates
@@ -811,16 +1118,29 @@ def _verify_candidates(candidates):
         if not body:
             out.append(c)
             continue
-        text = _norm(body)
-        drop = next(
-            (f"language: {k}" for k in REJECT_LANG
-             if re.search(rf"\b{re.escape(k)}\b", text)),
-            None)
+        lang = _language_check(body)
+        drop = lang.reason
         if drop is None:
+            text = _norm(body)
             drop = next(
                 (f"dead listing: {m}" for m in _VERIFY_DEAD_MARKERS
                  if re.search(rf"\b{re.escape(m)}\b", text)),
                 None)
+        cfg = TRACKS.get(c.get("track"))
+        if drop is None and cfg is not None:
+            fit = _resume_fit(c["job_title"] + " " + body, cfg["cv"])
+            if fit.ratio is not None and fit.ratio < _fit_min_ratio():
+                drop = "low resume fit"
+                if report is not None:
+                    _reject(report, "fit", "Low resume match (verified)")
+            else:
+                fit.german = lang.level or \
+                    (c.get("fit") or {}).get("german")
+                hits = c.get("_hits") or []
+                c["fit"] = {"have": fit.have, "gaps": fit.gaps,
+                            "ratio": fit.ratio, "german": fit.german}
+                c["match_score"] = _score(hits, c, cfg, fit)
+                c["why_fit"] = _why_fit(c, c["track"], hits, fit)
         if drop:
             print(f"[search] verify dropped {c['job_title'][:60]!r}: {drop}",
                   file=sys.stderr)
@@ -883,7 +1203,9 @@ def _check_links(candidates):
 class SearchReport:
     fetched: dict[str, int] = field(default_factory=dict)
     accepted: dict[str, int] = field(default_factory=dict)
-    rejected: dict[str, int] = field(default_factory=dict)
+    rejected: dict[str, dict[str, int]] = field(default_factory=dict)
+    funnel: dict[str, int] = field(default_factory=lambda: {
+        "fetched": 0, "hygiene": 0, "location": 0, "title": 0, "fit": 0})
     errors: dict[str, str] = field(default_factory=dict)
 
     def render(self):
@@ -891,6 +1213,7 @@ class SearchReport:
             "fetched": self.fetched,
             "accepted": self.accepted,
             "rejected": self.rejected,
+            "funnel": self.funnel,
             "errors": self.errors,
         }, sort_keys=True)
 
@@ -944,58 +1267,28 @@ def _collect_sources(adapters, tracks, report, declined, seen_urls):
                 yielded = True
                 src = job.get("_source") or name
                 _bump(report.fetched, src)
+                report.funnel["fetched"] += 1
                 url = tracker.canonical_url(job.get("url"))
                 if not url:
-                    _bump(report.rejected, "Missing URL")
+                    _reject(report, "hygiene", "Missing URL")
                     continue
                 if url in seen_urls:
-                    _bump(report.rejected, "Duplicate URL")
+                    _reject(report, "hygiene", "Duplicate URL")
                     continue
                 seen_urls.add(url)
                 if _declined_employer(job, declined):
-                    _bump(report.rejected, "Declined employer")
+                    _reject(report, "hygiene", "Declined employer")
                     continue
-                reason = _rejected(job)
-                if reason:
-                    _bump(report.rejected, reason)
-                    if reason in _LISTING_REASONS:
-                        listing_scopes.append({
-                            "url": url,
-                            "location": job.get("location") or "",
-                            "remote": bool(job.get("remote")),
-                            "source": src,
-                        })
-                    continue
-                geo_ok = False
-                accepted = False
-                for t in tracks:
-                    cfg = TRACKS[t]
-                    if not _location_ok(job, cfg):
-                        continue
-                    geo_ok = True
-                    hits = _matches(job, cfg)
-                    if not hits:
-                        continue
-                    cand = {
-                        "job_title": job["job_title"],
-                        "company": job["company"],
-                        "location": job["location"],
-                        "url": url,
-                        "track": t,
-                        "match_score": _score(hits, job, cfg),
-                        "why_fit": _why_fit(job, t, hits),
-                        "application_strategy": _strategy(cfg),
-                        "recommended_cv": cfg["cv"],
-                        "_dup_flag": False,
-                        "_source": src,
-                    }
+                cand, hygiene_reason = _evaluate(job, url, src, tracks, report)
+                if cand:
                     candidates.append(cand)
-                    _bump(report.accepted, src)
-                    accepted = True
-                    break  # first matching track wins
-                if not accepted:
-                    _bump(report.rejected,
-                          "No track match" if geo_ok else "Location")
+                elif hygiene_reason in _LISTING_REASONS:
+                    listing_scopes.append({
+                        "url": url,
+                        "location": job.get("location") or "",
+                        "remote": bool(job.get("remote")),
+                        "source": src,
+                    })
         except Exception as e:
             if not yielded:
                 failed += 1
@@ -1021,11 +1314,10 @@ def collect_with_report(track=None):
         _adapters(track), tracks, report, declined, seen_urls)
 
     if _websearch_enabled():
-        mined = _extract_stage(listing_scopes, tracks, seen_urls, declined)
-        for c in mined:
-            candidates.append(c)
-            _bump(report.accepted, c.get("_source") or "extract")
-        candidates = _verify_candidates(candidates)
+        mined = _extract_stage(listing_scopes, tracks, seen_urls, declined,
+                               report)
+        candidates.extend(mined)
+        candidates = _verify_candidates(candidates, report)
 
     candidates = _check_links(candidates)
 

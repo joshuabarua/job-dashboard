@@ -207,12 +207,34 @@
       "<32h", "30h", "25h"
     ],
     "language": [
-      "c1", "c2", "german fluent", "fluent german", "deutsch fließend",
+      "german fluent", "fluent german", "fluency in german",
+      "deutsch fließend", "fließend deutsch", "fließende deutschkenntnisse",
       "verhandlungssicher", "german native", "native german",
-      "muttersprache", "deutschkenntnisse c1", "deutschkenntnisse c2",
-      "c1 deutsch", "c2 deutsch", "german c1", "german c2",
-      "german required", "deutsch erforderlich"
+      "muttersprache", "muttersprachlich", "german required",
+      "deutsch erforderlich",
+      "sehr gute deutschkenntnisse", "sehr guten deutschkenntnissen",
+      "sehr gutes deutsch", "sehr gute deutsche sprachkenntnisse",
+      "sehr gute kenntnisse der deutschen sprache",
+      "exzellente deutschkenntnisse", "ausgezeichnete deutschkenntnisse",
+      "hervorragende deutschkenntnisse", "perfekte deutschkenntnisse",
+      "very good german", "excellent german", "perfect german",
+      "very good command of german", "excellent command of german"
     ],
+    "language_level": {
+      "max_level": "B2",
+      "target_terms": ["german", "deutsch"],
+      "other_terms": [
+        "english", "englisch", "french", "französisch", "spanish",
+        "spanisch", "italian", "italienisch", "dutch", "niederländisch",
+        "polish", "polnisch", "portuguese", "portugiesisch"
+      ],
+      "max_distance": 60,
+      "optional_markers": [
+        "plus", "nice to have", "nice-to-have", "bonus", "advantage",
+        "advantageous", "preferred", "ideally", "von vorteil",
+        "wünschenswert", "vorteilhaft", "idealerweise", "gerne gesehen"
+      ]
+    },
     "skills": ["java", "golang", "go", "c++", "c#", "csharp", ".net", "dotnet"],
     "text": [
       "boulder valley", "bvsd", "boulder county", "city of boulder",
@@ -229,6 +251,157 @@
       "no longer available", "stelle ist nicht mehr",
       "position has been filled", "expired"
     ]
+  },
+  "resume": {
+    "min_detected": 3,
+    "min_ratio": 0.3,
+    "skill_groups": {
+      "frontend": [
+        ["react", "react.js", "reactjs"], ["typescript"], ["javascript"],
+        ["html", "html5"], ["css", "css3"], ["gsap"], ["next.js", "nextjs"],
+        ["react native"], ["tailwind", "tailwind css", "tailwindcss"],
+        ["redux"], ["zustand"], ["material ui", "mui"],
+        ["responsive design", "responsive layouts"],
+        ["mobile app", "mobile apps", "ios", "android"], ["figma"]
+      ],
+      "backend": [
+        ["node.js", "nodejs"], ["express.js", "expressjs"], ["graphql"],
+        ["firebase"], ["hono"],
+        ["rest api", "rest apis", "restful", "api integration", "api integrations"],
+        ["php"]
+      ],
+      "databases": [
+        ["sql"], ["mysql"], ["postgres", "postgresql"], ["mongodb"],
+        ["supabase"], ["convex"]
+      ],
+      "cloud_devops": [
+        ["docker"], ["jenkins"], ["ci/cd", "continuous integration"],
+        ["git", "github", "gitlab"], ["cloudflare"], ["gcp", "google cloud"]
+      ],
+      "ways_of_working": [
+        ["agile", "scrum"], ["debugging", "bug fixing", "bug resolution"],
+        ["technical documentation", "documentation", "user guides"],
+        ["ux", "user experience"]
+      ],
+      "qa": [
+        ["playwright"],
+        ["test automation", "automated testing", "automation testing"]
+      ],
+      "it_support": [
+        ["linux", "ubuntu"], ["windows"], ["macos", "mac os"], ["unix"],
+        ["bash", "shell scripting"],
+        ["networking", "tcp/ip", "subnetting", "ip addressing"],
+        ["ssh"], ["raspberry pi"], ["troubleshooting"],
+        ["user support", "end user support", "customer support"]
+      ],
+      "security": [
+        ["cisco", "packet tracer"],
+        ["access control", "user management", "user and group management"]
+      ],
+      "consulting": [
+        ["stakeholder management", "stakeholders"], ["cms"]
+      ],
+      "hospitality": [
+        ["customer service", "guest service", "guest relations"],
+        ["cash handling", "till management", "pos", "kasse"],
+        ["cocktails", "cocktail", "mixology"],
+        ["bartending", "bar experience", "bar operations"],
+        ["food service", "food running", "table service", "waiting tables"],
+        ["front of house", "foh"], ["reservations", "bookings"],
+        ["stock take", "stocktaking", "inventory"],
+        ["beverage knowledge", "drinks knowledge"],
+        ["event setup", "banqueting", "conferencing"],
+        ["teamwork", "team player"],
+        ["flexible shifts", "weekend shifts"], ["kegs"]
+      ],
+      "climbing": [
+        ["climbing", "bouldering", "climber"],
+        ["front desk", "reception", "empfang"]
+      ],
+      "dev_gaps": [
+        ["java"], ["python"], ["golang"], ["c#", "csharp"],
+        ["dotnet", "asp.net"], ["c++"], ["ruby", "ruby on rails"],
+        ["django"], ["spring boot"], ["kotlin"], ["swift"], ["angular"],
+        ["scala"], ["rust"], ["kubernetes", "k8s"], ["terraform"],
+        ["aws", "amazon web services"], ["azure"], ["vue", "vue.js", "vuejs"],
+        ["svelte"], ["laravel"], ["symfony"]
+      ],
+      "qa_gaps": [
+        ["selenium"], ["cypress"], ["appium"], ["jmeter"], ["postman"],
+        ["istqb"], ["pytest"], ["junit"], ["testng"], ["cucumber"]
+      ],
+      "it_gaps": [
+        ["active directory"], ["entra id", "azure ad"], ["intune"],
+        ["microsoft 365", "office 365", "m365"],
+        ["exchange server", "exchange online"], ["sccm"], ["vmware"],
+        ["hyper-v"], ["powershell"], ["itil"], ["ccna"], ["comptia"],
+        ["servicenow", "jira service management"], ["citrix"], ["sap"],
+        ["aws", "amazon web services"], ["azure"]
+      ],
+      "security_gaps": [
+        ["siem"], ["splunk"],
+        ["penetration testing", "pentesting", "pen testing"],
+        ["iso 27001", "iso27001"], ["nist"], ["firewall", "firewalls"],
+        ["intrusion detection"],
+        ["vulnerability management", "vulnerability scanning"],
+        ["incident response"], ["soc"], ["cissp"],
+        ["security+", "comptia security+"], ["python"], ["wireshark"],
+        ["kali", "kali linux"], ["oscp"], ["it grundschutz", "bsi"]
+      ],
+      "consulting_gaps": [
+        ["sap"], ["salesforce"], ["power bi"], ["erp"], ["tableau"],
+        ["servicenow"]
+      ],
+      "hospitality_gaps": [
+        ["sommelier", "wine knowledge"],
+        ["chef", "line cook", "kitchen experience"], ["haccp"]
+      ],
+      "climbing_gaps": [
+        ["route setting", "routesetting", "routesetter", "route setter",
+         "routenschrauben", "routenbau"],
+        ["trainer c", "trainer b", "übungsleiter", "uebungsleiter",
+         "climbing instructor certificate"],
+        ["kinderklettern", "kids coaching"]
+      ]
+    },
+    "cvs": {
+      "Frontend CV": {
+        "have": ["frontend", "backend", "databases", "cloud_devops", "ways_of_working"],
+        "gaps": ["dev_gaps"]
+      },
+      "Fullstack/Frontend CV": {
+        "have": ["frontend", "backend", "databases", "cloud_devops", "ways_of_working"],
+        "gaps": ["dev_gaps"]
+      },
+      "QA / Test Automation CV": {
+        "have": ["qa", "frontend", "backend", "cloud_devops", "ways_of_working"],
+        "gaps": ["qa_gaps", "dev_gaps"]
+      },
+      "Application Support CV": {
+        "have": ["it_support", "databases", "cloud_devops", "ways_of_working"],
+        "gaps": ["it_gaps"]
+      },
+      "IT Support CV": {
+        "have": ["it_support", "databases", "cloud_devops", "ways_of_working"],
+        "gaps": ["it_gaps"]
+      },
+      "Technical Consulting CV": {
+        "have": ["consulting", "frontend", "backend", "databases", "cloud_devops", "ways_of_working"],
+        "gaps": ["consulting_gaps", "dev_gaps"]
+      },
+      "IT Security / Technical Consulting CV": {
+        "have": ["security", "it_support", "cloud_devops", "databases", "ways_of_working"],
+        "gaps": ["security_gaps", "it_gaps"]
+      },
+      "Bouldering Gym CV": {
+        "have": ["climbing", "hospitality"],
+        "gaps": ["climbing_gaps"]
+      },
+      "Hospitality / Restaurant CV": {
+        "have": ["hospitality"],
+        "gaps": ["hospitality_gaps"]
+      }
+    }
   },
   "sources": {
     "arbeitnow": true,
@@ -250,7 +423,9 @@
       {"name": "Cliffhanger Berlin", "url": "https://www.cliffhanger-berlin.de/stellenangebote/", "location": "Berlin", "remote": false},
       {"name": "Magic Mountain Berlin", "url": "https://www.magicmountain.de/2025/07/kolleginnen-gesucht/", "location": "Berlin", "remote": false},
       {"name": "Klettermax Berlin", "url": "https://dev.klettermax.berlin/jobs", "location": "Berlin", "remote": false},
-      {"name": "BergWerk Berlin", "url": "https://bergwerk.berlin/info/jobs.html", "location": "Berlin", "remote": false}
+      {"name": "BergWerk Berlin", "url": "https://bergwerk.berlin/info/jobs.html", "location": "Berlin", "remote": false},
+      {"name": "Urban Apes", "url": "https://www.urbanapes.de/jobs/", "location": "Berlin", "remote": false},
+      {"name": "Südbloc", "url": "https://www.suedbloc.de/jobs/", "location": "Berlin", "remote": false}
     ],
     "extract_seeds": [
       {"url": "https://berlinstartupjobs.com/engineering/", "location": "Berlin", "remote": false}

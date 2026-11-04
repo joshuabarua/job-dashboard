@@ -67,6 +67,24 @@ def validate(data):
     reject = data.get("reject") or {}
     _require(isinstance(reject, dict), "config.reject: must be an object")
     for key, val in reject.items():
+        if key == "language_level":
+            path = "config.reject.language_level"
+            _require(isinstance(val, dict), f"{path}: must be an object")
+            _require(isinstance(val.get("max_level"), str) and
+                     val["max_level"].upper() in
+                     ("A1", "A2", "B1", "B2", "C1", "C2"),
+                     f"{path}.max_level: must be one of A1, A2, B1, B2, "
+                     "C1, C2")
+            for field in ("target_terms", "other_terms",
+                          "optional_markers"):
+                _require(_nonempty_str_list(val.get(field)),
+                         f"{path}.{field}: must be a non-empty list "
+                         "of strings")
+            _require(isinstance(val.get("max_distance"), int)
+                     and not isinstance(val.get("max_distance"), bool)
+                     and val["max_distance"] > 0,
+                     f"{path}.max_distance: must be a positive integer")
+            continue
         _require(isinstance(val, list),
                  f"config.reject.{key}: must be a list")
 
@@ -88,6 +106,45 @@ def validate(data):
                      f"{path}.{field}: must be a non-empty string")
         _require(isinstance(s.get("remote"), bool),
                  f"{path}.remote: must be a boolean")
+
+    resume = data.get("resume")
+    if resume is not None:
+        _require(isinstance(resume, dict), "config.resume: must be an object")
+        _require(isinstance(resume.get("min_detected"), int)
+                 and not isinstance(resume.get("min_detected"), bool)
+                 and resume["min_detected"] > 0,
+                 "config.resume.min_detected: must be a positive integer")
+        ratio = resume.get("min_ratio")
+        _require(isinstance(ratio, (int, float))
+                 and not isinstance(ratio, bool) and 0 <= ratio <= 1,
+                 "config.resume.min_ratio: must be a number in [0, 1]")
+        groups = resume.get("skill_groups")
+        _require(isinstance(groups, dict),
+                 "config.resume.skill_groups: must be an object")
+        for name, entries in groups.items():
+            path = f"config.resume.skill_groups.{name}"
+            _require(isinstance(entries, list) and entries,
+                     f"{path}: must be a non-empty list")
+            for i, aliases in enumerate(entries):
+                _require(_nonempty_str_list(aliases),
+                         f"{path}[{i}]: must be a non-empty list of strings")
+        cvs = resume.get("cvs")
+        _require(isinstance(cvs, dict) and cvs,
+                 "config.resume.cvs: must be a non-empty object")
+        for cv_label, cv in cvs.items():
+            path = f"config.resume.cvs.{cv_label}"
+            _require(isinstance(cv, dict), f"{path}: must be an object")
+            for field in ("have", "gaps"):
+                _require(_nonempty_str_list(cv.get(field)),
+                         f"{path}.{field}: must be a non-empty list "
+                         "of strings")
+                for grp in cv[field]:
+                    _require(grp in groups,
+                             f"{path}.{field}: unknown skill group {grp!r}")
+        for name, cfg in tracks.items():
+            _require(cfg["cv"] in cvs,
+                     f"config.tracks.{name}.cv: must be a key in resume.cvs "
+                     f"(got {cfg['cv']!r})")
     return data
 
 
@@ -152,12 +209,20 @@ def reject(key):
     return load().get("reject", {}).get(key) or []
 
 
+def language_level():
+    return load().get("reject", {}).get("language_level") or {}
+
+
 def sources():
     return load().get("sources") or {}
 
 
 def source_enabled(key):
     return bool(sources().get(key, True))
+
+
+def resume():
+    return load().get("resume") or {}
 
 
 def skill_keywords():

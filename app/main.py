@@ -1,5 +1,6 @@
 """Job Search Command Center - FastAPI application."""
 
+import json
 import os
 from pathlib import Path
 from urllib.parse import unquote
@@ -122,8 +123,9 @@ def update_status(notion_id: str, payload: StatusUpdate):
 @app.get("/api/search")
 def search_jobs(track: str | None = Query(default=None)):
     try:
-        candidates = search.collect(track=track)
-        return {"ok": True, "candidates": candidates}
+        result = search.collect_with_report(track=track)
+        return {"ok": True, "candidates": result.candidates,
+                "report": json.loads(result.report.render())}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

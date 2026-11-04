@@ -60,11 +60,29 @@ Everything personal lives in `config.json`. No code edits needed.
   "reject": {
     "title":    ["senior", "lead", "manager"],   // drop if in job title
     "hours":    ["part-time", "minijob"],        // drop if in job title
-    "language": ["german required", "c1"],       // drop if in title/tags/page body
+    "language": ["german required"],             // phrases: drop if in title/tags/desc/page body
+    "language_level": {                          // CEFR gate: German up to max_level is OK
+      "max_level": "B2",                         // "German C1"/"Deutsch C1" rejects, "German B2" passes
+      "target_terms": ["german", "deutsch"],     // level words this rule applies to
+      "other_terms": ["english", "englisch"],    // levels near these are ignored (e.g. "English C1")
+      "max_distance": 60,                        // max chars between level and language word
+      "optional_markers": ["plus", "nice to have", "von vorteil"]  // skip these clauses
+    },
     "skills":   ["java"],                        // drop if in title/tags (word-boundary: won't hit "javascript")
     "text":     ["boulder valley"],              // drop if phrase in title/company (false-friend geo names)
     "hosts":    ["linkedin.com"],                // drop results from these hosts
     "dead_markers": ["no longer available"]      // drop when the posting page says this
+  },
+  "resume": {                              // optional: resume-fit scoring per CV
+    "min_detected": 3,                     // fewer detected skills = fit unknown (never dropped)
+    "min_ratio": 0.3,                      // below this have/detected ratio -> reject "Low resume match"
+    "skill_groups": {                      // name -> list of alias lists; first alias = canonical label
+      "frontend": [["react", "reactjs"], ["typescript"]],
+      "dev_gaps": [["java"], ["aws"]]
+    },
+    "cvs": {                               // each track's "cv" must be a key here
+      "Frontend CV": {"have": ["frontend"], "gaps": ["dev_gaps"]}
+    }
   },
   "sources": {
     "arbeitnow": true,            // free job-board API, no key (Germany/EU-heavy)
@@ -192,13 +210,23 @@ set this if bund.dev issues you a dedicated key.
 ```json
 {"accepted": {"arbeitnow": 12}, "errors": {},
  "fetched": {"arbeitnow": 400, "remotive": 30},
- "rejected": {"Location": 350, "No track match": 30, "Seniority: senior": 8}}
+ "rejected": {"hygiene": {"Duplicate URL": 20},
+              "location": {"No geo evidence": 350},
+              "title": {"No track match": 30, "Seniority: senior": 8},
+              "fit": {"Low resume match": 4}},
+ "funnel": {"fetched": 430, "hygiene": 410, "location": 60, "title": 30,
+            "fit": 12}}
 ```
+
+The report is also written to `public/report.json` (plus a `generated_at`
+timestamp) for the static dashboard's "Last search" funnel.
 
 - `fetched` — jobs seen per source adapter (HTML boards count as
   `html:<board name>`), before filtering.
-- `rejected` — jobs dropped per reason (`Location`, `No track match`,
-  `Duplicate URL`, `Declined employer`, or a filter reason).
+- `rejected` — jobs dropped, nested by pipeline stage (`hygiene`,
+  `location`, `title`, `fit`) then reason.
+- `funnel` — jobs that passed each ordered stage (including extract-mined
+  links).
 - `accepted` — pipeline-accepted per source, counted **before** tracker
   duplicate marking; mined/extract candidates count under their scope's
   source.
@@ -206,7 +234,7 @@ set this if bund.dev issues you a dedicated key.
   **before yielding any row**, the run exits nonzero with
   `RuntimeError: all job sources failed`.
 
-Troubleshooting: mostly `Location` rejects → the job's own text names no
+Troubleshooting: mostly `location` rejects → the job's own text names no
 allowed geo (expected — false negatives are chosen over geo leaks). Check a
 card's `why_fit` for `source: <name>` to see where a candidate came from.
 Unique candidates always sort before duplicates, so the 40-candidate cap

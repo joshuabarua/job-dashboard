@@ -130,36 +130,36 @@ class TestIsRemote(unittest.TestCase):
 
 
 class TestLocationOk(unittest.TestCase):
-    onsite = {"remote": False}
-    remote = {"remote": True}
+    onsite = ["Application Support Engineer"]
+    remote = ["Developer"]
+
+    def passes(self, j, tracks):
+        reason, _ = jobsearch._location_reject(j, tracks)
+        return reason is None
 
     def test_onsite_matrix(self):
         for loc in ["Berlin", "London", "Manchester", "Glasgow, Scotland"]:
             self.assertTrue(
-                jobsearch._location_ok(job(location=loc), self.onsite), loc)
+                self.passes(job(location=loc), self.onsite), loc)
         for loc in ["Munich, Germany", "Germany", "Hamburg", "Paris",
                     "New York", ""]:
             self.assertFalse(
-                jobsearch._location_ok(job(location=loc), self.onsite), loc)
+                self.passes(job(location=loc), self.onsite), loc)
 
     def test_remote_matrix(self):
         for loc in ["Remote - Germany", "Remote - UK", "Remote Berlin",
                     "Berlin"]:
             self.assertTrue(
-                jobsearch._location_ok(
-                    job(location=loc, remote=True), self.remote), loc)
+                self.passes(job(location=loc, remote=True), self.remote), loc)
         for loc in ["Worldwide", "Europe", "EMEA", "US", "Canada",
                     "Remote", ""]:
             self.assertFalse(
-                jobsearch._location_ok(
-                    job(location=loc, remote=True), self.remote), loc)
+                self.passes(job(location=loc, remote=True), self.remote), loc)
 
     def test_track_remote_gate(self):
         remote_berlin = job(location="Remote - Berlin", remote=True)
-        self.assertFalse(
-            jobsearch._location_ok(remote_berlin, self.onsite))
-        self.assertTrue(
-            jobsearch._location_ok(remote_berlin, self.remote))
+        self.assertFalse(self.passes(remote_berlin, self.onsite))
+        self.assertTrue(self.passes(remote_berlin, self.remote))
 
 
 if __name__ == "__main__":

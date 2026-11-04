@@ -132,8 +132,9 @@
           <div class="card-meta">
             <span class="meta" x-text="job.location"></span>
             <span class="meta" x-show="job.date" x-text="job.date ? new Date(job.date).toLocaleDateString('en-GB') : ''"></span>
-            <span class="meta score" x-show="job.match_score !== ''" title="Match score 0–10: keyword fit, remote, and location bonuses">score <b x-text="job.match_score"></b></span>
+            <span class="meta score" x-show="job.match_score !== ''" title="Match score 0–10: title keywords, location bonus, resume fit">score <b x-text="job.match_score"></b></span>
           </div>
+          <div class="cand-why muted small" x-show="job.why_fit" x-text="job.why_fit"></div>
           <div class="card-flags">
             <span class="flag" x-show="job._dup_flag">DUPLICATE</span>
             <span class="flag" x-show="job.status !== 'New'">&#10003; <span x-text="job.status"></span></span>
@@ -181,6 +182,15 @@
     </p>
     <p class="muted small" x-show="searching">Scanning job boards&hellip;</p>
     <p class="err" x-show="searchError" x-text="searchError"></p>
+    <div class="funnel" x-show="searchFunnel.length">
+      <template x-for="row in searchFunnel" :key="row.key">
+        <div class="funnel-row" :title="row.tip">
+          <span class="funnel-label" x-text="row.label"></span>
+          <div class="funnel-bar"><i :style="'width:' + row.pct + '%'"></i></div>
+          <span class="funnel-count" x-text="row.count"></span>
+        </div>
+      </template>
+    </div>
     <div class="override-list">
       <template x-for="c in candidates" :key="c.url">
         <div class="candidate" :class="{'dupe': c._dup_flag}">
@@ -195,6 +205,16 @@
             <span class="meta" x-text="c.location"></span>
             <span class="meta" x-text="c.recommended_cv"></span>
           </div>
+          <div class="fit-chips" x-show="c.fit">
+            <span class="fit-chip fit-score" x-text="c.fit && c.fit.ratio !== null && c.fit.ratio !== undefined ? 'fit ' + c.fit.have.length + '/' + (c.fit.have.length + c.fit.gaps.length) : 'fit ?'"></span>
+            <span class="fit-chip fit-have" x-show="c.fit && c.fit.german" x-text="c.fit && c.fit.german ? 'DE ' + c.fit.german : ''"></span>
+            <template x-for="s in (c.fit ? c.fit.have : [])" :key="s">
+              <span class="fit-chip fit-have" x-text="s"></span>
+            </template>
+            <template x-for="s in (c.fit ? c.fit.gaps : [])" :key="s">
+              <span class="fit-chip fit-gap" x-text="s"></span>
+            </template>
+          </div>
           <div class="cand-why muted small" x-text="c.why_fit"></div>
           <button class="add-btn" :disabled="c._dup_flag" @click="addCandidate(c)">&#43; ADD TO TRACKER</button>
         </div>
@@ -204,6 +224,25 @@
 </div>
 
 <script>
+const FUNNEL_STAGES = [
+  ["fetched", "Fetched"], ["hygiene", "Hygiene"], ["location", "Location"],
+  ["title", "Title"], ["fit", "Resume fit"],
+];
+
+function buildFunnelRows(report) {
+  const f = (report && report.funnel) || {};
+  const base = f.fetched || 0;
+  return FUNNEL_STAGES.map(([key, label]) => {
+    const reasons = (report && report.rejected && report.rejected[key]) || {};
+    const tip = Object.entries(reasons)
+      .sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([k, v]) => `${k} (${v})`).join("\n");
+    const count = f[key] || 0;
+    return { key, label, count, tip,
+             pct: base ? Math.round(100 * count / base) : 0 };
+  });
+}
+
 function cmd() {
   return {
     version: "v1.0",
@@ -215,6 +254,7 @@ function cmd() {
     // ui
     loading: true, drawer: false, mobileOpen: false,
     searchOpen: false, searching: false, candidates: [], searchError: "",
+    searchReport: null, searchFunnel: [],
     totalAll: 0, totalFiltered: 0, updatedAt: "", _tid: null,
 
     async init() {
@@ -355,6 +395,8 @@ function cmd() {
         const r = await fetch("/api/search?track=" + encodeURIComponent(this.track || ""));
         const res = await r.json();
         if (!res.ok) throw new Error(res.error || "search failed");
+        this.searchReport = res.report || null;
+        this.searchFunnel = buildFunnelRows(res.report);
         this.candidates = res.candidates.filter(c => !c._dup_flag);
       } catch (e) {
         this.searchError = e.message;
