@@ -86,3 +86,40 @@ test("markApplied on app/static/index.html rendered with configured key succeeds
   assert.equal(headers.Authorization, `Bearer ${headers.apikey}`);
   assert.equal(JSON.parse(fetches[0].opts.body).status, "Applied");
 });
+
+function renderedStatic() {
+  const tpl = fs.readFileSync(path.join(ROOT, "app", "static", "index.html"), "utf8");
+  return tpl
+    .replaceAll("__SUPABASE_URL__", "https://test.supabase.co")
+    .replaceAll("__SUPABASE_KEY__", "test-anon-key");
+}
+
+test("all-tracks view hides Applied and Declined unless toggled", () => {
+  const { dash } = makeHarness(extractScript(renderedStatic()));
+  dash.jobs = ["New", "Applied", "Declined", "Starred"].map((status, i) =>
+    ({ ...makeJob(), id: String(i), _key: i, status }));
+  dash.update();
+  assert.deepEqual(dash.visible.map(j => j.status), ["New", "Starred"]);
+  dash.showApplied = true;
+  dash.update();
+  assert.equal(dash.visible.length, 4);
+  dash.showApplied = false;
+  dash.statusAll = false;
+  dash.selStatus = "Declined";
+  dash.update();
+  assert.deepEqual(dash.visible.map(j => j.status), ["Declined"]);
+});
+
+test("filter changes reset paging; status changes keep it", async () => {
+  const { dash } = makeHarness(extractScript(renderedStatic()));
+  dash.jobs = Array.from({ length: 200 }, (_, i) =>
+    ({ ...makeJob(), id: String(i), _key: i }));
+  dash.update();
+  assert.equal(dash.limit, dash.PAGE_SIZE);
+  dash.limit += dash.PAGE_SIZE;
+  await dash.markStarred(dash.jobs[150]);
+  assert.equal(dash.limit, 2 * dash.PAGE_SIZE);
+  dash.q = "test";
+  dash.update();
+  assert.equal(dash.limit, dash.PAGE_SIZE);
+});

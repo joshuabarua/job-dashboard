@@ -81,6 +81,42 @@ class TestRejected(unittest.TestCase):
             self.assertIsNotNone(
                 jobsearch._hygiene_reject(job(title=title)), title)
 
+    def test_listing_page_titles(self):
+        for title in ["193 Node.js-Jobs | Startup Insider",
+                      "FULL STACK jobs | London, United Kingdom | Job-in UK",
+                      "Remote Node.js Jobs - NoDesk",
+                      "Bartender Jobs London: Apply Now | Fraser Bond",
+                      "18523 Application Support Job Vacancies In Germany",
+                      "Frontend Development Remote in Deutschland: 40 offene Stellen",
+                      "Manage Gritstone– Climbing Jobs Weekly 2022 August 25",
+                      "typescript", "React Native", "Career"]:
+            self.assertEqual(jobsearch._hygiene_reject(job(title=title)),
+                             "Multi-job listing", title)
+
+    def test_content_page_titles(self):
+        self.assertEqual(
+            jobsearch._hygiene_reject(job(
+                title="Boulderhalle in Berlin Pankow - Sport und Fitness Berlin Guide")),
+            "Non-job content page")
+
+    def test_real_titles_not_listing(self):
+        for title in ["Routesetter", "Bartender",
+                      "UKC News - JOBS: Climbing Team Member (Bouldering)",
+                      "Frontend Developer (m/f/d)",
+                      "Junior React Engineer at Jobsuche GmbH"]:
+            self.assertIsNone(jobsearch._hygiene_reject(job(title=title)), title)
+
+    def test_rejected_host_is_suffix_match(self):
+        self.assertIsNone(jobsearch._hygiene_reject(job(
+            title="System Administrator",
+            url="https://jobs.ashbyhq.com/taxfix.com/881e6d21")))
+        self.assertIsNone(jobsearch._hygiene_reject(job(
+            title="System Administrator", url="https://taxfix.com/jobs/1")))
+        self.assertIsNotNone(jobsearch._hygiene_reject(job(
+            title="System Administrator", url="https://x.com/someone/status/1")))
+        self.assertIsNotNone(jobsearch._hygiene_reject(job(
+            title="Frontend Engineer", url="https://de.linkedin.com/jobs/view/1")))
+
 
 class TestFetchWebsearch(unittest.TestCase):
     RESULTS = [

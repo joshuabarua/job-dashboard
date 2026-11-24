@@ -111,6 +111,21 @@ REJECT_TITLE_PATTERNS = [
     ]
 ]
 
+# Plural "jobs"/"vacancies"/"Stellen" in a title is almost always a listing
+# page ("193 Node.js-Jobs | Startup Insider", "Bartender Jobs London: Apply
+# Now"). A leading "JOBS:" news prefix ("JOBS: Climbing Team Member") is a
+# single posting, so it is exempt.
+LISTING_WORD_RE = re.compile(
+    r"(?<![a-z])(jobs|vacancies|stellen)(?![a-z])(?!\s*:)", re.I)
+
+# Content pages (city guides, venue directories) that mention a role keyword
+# but are not postings; never sent to the extract stage.
+REJECT_CONTENT_TITLE_RE = re.compile(r"(?<![a-z])(guide|directory)(?![a-z])", re.I)
+
+# Generic page titles: a bare skill/tool name ("typescript", "react native")
+# or site chrome ("Career") is a tag/listing page, not a role.
+_BARE_TITLE_WORDS = {"qa", "career", "careers", "karriere", "home"}
+
 TIMEOUT = 20
 
 
@@ -577,9 +592,11 @@ STAGES = ("hygiene", "location", "title", "fit")
 def _hygiene_reject(job):
     """Stage 0: track-independent junk filters (URL and title patterns)."""
     url = (job.get("url") or "").lower()
-    for host in REJECT_HOSTS:
-        if host in url:
-            return f"Rejected host: {host}"
+    host = _page_host(url)
+    for rejected in REJECT_HOSTS:
+        # Suffix match on the hostname: "x.com" must not hit "taxfix.com".
+        if host == rejected or host.endswith("." + rejected):
+            return f"Rejected host: {rejected}"
     for pat in REJECT_CONTENT_PATTERNS:
         if pat.search(url):
             return "Non-job content page"
@@ -588,11 +605,36 @@ def _hygiene_reject(job):
         for pat in REJECT_URL_PATTERNS:
             if pat.search(url):
                 return "Aggregator listing page"
-    t = _norm(job["job_title"])
+    raw_title = job.get("job_title") or ""
+    if REJECT_CONTENT_TITLE_RE.search(raw_title):
+        return "Non-job content page"
+    t = _norm(raw_title)
     for pat in REJECT_TITLE_PATTERNS:
         if pat.search(t):
             return "Multi-job listing"
+    if LISTING_WORD_RE.search(raw_title) or t.strip() in _bare_titles():
+        return "Multi-job listing"
     return None
+
+
+_BARE_TITLES = None
+
+
+def _bare_titles():
+    """Normalized skill aliases + generic page words that are never a role."""
+    global _BARE_TITLES
+    if _BARE_TITLES is None:
+        groups = config.resume().get("skill_groups") or {}
+        words = set(_BARE_TITLE_WORDS)
+        for aliases in groups.values():
+            for alias_list in aliases:
+                words.update(_norm(a).strip() for a in alias_list)
+        # Role nouns ("Routesetter", "Trainer") are legitimate one-word titles.
+        for track_cfg in TRACKS.values():
+            words.difference_update(
+                _norm(k).strip() for k in track_cfg.get("role_keywords") or [])
+        _BARE_TITLES = {w for w in words if w}
+    return _BARE_TITLES
 
 
 _OK_CITIES = tuple(config.cities_lower())
