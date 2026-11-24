@@ -127,7 +127,7 @@
           <a :href="job.url" target="_blank" rel="noopener" class="card-title" x-text="job.job_title"></a>
           <div class="card-sub" x-text="job.company"></div>
           <div class="card-meta">
-            <span class="meta" x-text="job.location"></span>
+            <span class="meta" :title="job.location" x-text="job.location_raw || job.location"></span>
             <span class="meta" x-show="job.date" x-text="job.date ? new Date(job.date).toLocaleDateString('en-GB') : ''"></span>
             <span class="meta score" x-show="job.match_score !== ''" title="Match score 0–10: title keywords, location bonus, resume fit">score <b x-text="job.match_score"></b></span>
           </div>

@@ -122,7 +122,7 @@
           <a :href="job.url" target="_blank" rel="noopener" class="card-title" x-text="job.job_title"></a>
           <div class="card-sub" x-text="job.company"></div>
           <div class="card-meta">
-            <span class="meta" x-text="job.location"></span>
+            <span class="meta" :title="job.location" x-text="job.location_raw || job.location"></span>
             <span class="meta" x-show="job.date" x-text="job.date ? new Date(job.date).toLocaleDateString('en-GB') : ''"></span>
             <span class="meta score" x-show="job.match_score !== ''" title="Match score 0–10: title keywords, location bonus, resume fit">score <b x-text="job.match_score"></b></span>
           </div>
@@ -226,13 +226,14 @@ function cmd() {
         if (!this.showDupes && j._dup_flag) return false;
         if (this.loc && j.location !== this.loc) return false;
         if (this.q.trim()) {
-          const hay = (j.job_title + " " + j.company + " " + j.location + " " + j.track).toLowerCase();
+          const hay = (j.job_title + " " + j.company + " " + j.location + " " + (j.location_raw || "") + " " + j.track).toLowerCase();
           if (!hay.includes(this.q.trim().toLowerCase())) return false;
         }
         return true;
       });
       if (this.sort === "score") {
-        out.sort((a, b) => (parseFloat(b.match_score) || 0) - (parseFloat(a.match_score) || 0));
+        out.sort((a, b) => (parseFloat(b.match_score) || 0) - (parseFloat(a.match_score) || 0)
+                           || (b.date || "").localeCompare(a.date || ""));
       } else {
         out.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
       }

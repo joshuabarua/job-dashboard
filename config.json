@@ -11,6 +11,13 @@
       {
         "label": "Germany",
         "terms": ["germany", "deutschland"],
+        "display_terms": ["bayern", "bavaria", "niedersachsen", "sachsen", "nordrhein-westfalen",
+                          "hessen", "baden-württemberg", "brandenburg", "hamburg", "munich",
+                          "münchen", "cologne", "köln", "frankfurt", "stuttgart", "düsseldorf",
+                          "leipzig", "dresden", "hannover", "nürnberg", "nuremberg", "bremen",
+                          "potsdam", "aachen", "bielefeld", "braunschweig", "heidelberg",
+                          "heilbronn", "würzburg", "augsburg", "ingolstadt", "neuss", "garbsen",
+                          "gilching", "krailling", "karlsruhe", "mannheim", "bonn", "münster"],
         "onsite": false,
         "remote": true
       },

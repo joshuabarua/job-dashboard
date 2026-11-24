@@ -38,6 +38,7 @@ Everything personal lives in `config.json`. No code edits needed.
       {"label": "Berlin", "terms": ["berlin"],
        "onsite": true, "remote": true},
       {"label": "Germany", "terms": ["germany", "deutschland"],
+       "display_terms": ["munich", "bayern"],  // optional: dropdown labels only, never geo evidence
        "onsite": false, "remote": true},
       {"label": "United Kingdom",
        "terms": ["uk", "united kingdom", "england", "scotland", "wales",
@@ -186,8 +187,7 @@ is exhausted. Sign up for any subset; more keys = more coverage.
 key for web search to work; two or three gives headroom when one runs dry.
 
 Web search is metered, so it's gated behind `WEBSEARCH_ENABLED=1`. The GitHub
-workflow enables it on the nightly run and on manual dispatch only; free
-three-times-daily runs use only the no-key sources.
+workflow runs once a day and always enables it (manual dispatch too).
 
 `ARBEITSAGENTUR_API_KEY` is optional — the API ships a public client id; only
 set this if bund.dev issues you a dedicated key.
@@ -246,8 +246,12 @@ the source was skipped, not that it failed.
 
 ### a) GitHub Actions + GitHub Pages (recommended, free)
 
-`.github/workflows/heartbeat.yml` is included. It searches 3× daily plus one
-nightly metered run, rebuilds `public/`, and deploys to Pages.
+`.github/workflows/heartbeat.yml` is included. It runs once a day (05:17 UTC)
+and on manual dispatch: searches, rescores stored jobs, rebuilds `public/`,
+and deploys it to Pages. The generated data (`jobs.json`, `stats.json`,
+`meta.json`, `report.json`) goes to Pages only and is never committed, so the
+repo does not grow with each run. Pushing code does not trigger a run — use
+Actions → "Job Search Heartbeat" → Run workflow to deploy a change right away.
 
 Setup:
 
@@ -297,6 +301,14 @@ uvicorn app.main:app --reload
 Dashboard at http://localhost:8000. `python scripts/run_search.py` runs one
 search pass and appends new candidates to Supabase;
 `python scripts/build_static.py` rebuilds `public/`.
+
+Maintenance scripts (both dry-run by default; add `--apply` to write):
+
+- `python scripts/rescore.py` — recompute `match_score` for stored jobs with
+  the current formula (the workflow runs this daily; only changed rows are
+  written).
+- `python scripts/prune_junk.py` — delete `New` rows that today's hygiene
+  filters would reject (listing pages, content pages, blocked hosts).
 
 ## 6. How matching works
 

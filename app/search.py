@@ -898,17 +898,34 @@ def _fit_text(job):
     ])
 
 
+def _geo_bonus(job, track_cfg):
+    """True when the job's place suits the track (remote track + remote job,
+    or on-site track + a configured city in title/location)."""
+    if track_cfg["remote"] and _is_remote(job):
+        return True
+    return not track_cfg["remote"] and any(
+        c in _norm(job["job_title"]) or c in _norm(job.get("location") or "")
+        for c in _OK_CITIES)
+
+
+def score_from(hit_count, have_count, gap_count, geo_ok):
+    """0–10 match score, one decimal.
+
+    1 base + up to 2 for title keyword hits + 1 for geo fit + up to 6 for
+    resume fit. Fit uses a smoothed ratio (have+1)/(detected+2), so a job
+    with no detected skills sits at the neutral midpoint (3 of 6) and more
+    evidence pushes it further up or down: 1/1 -> 4.0, 12/13 -> 5.2,
+    0/6 -> 0.75.
+    """
+    title = min(max(hit_count, 0), 2)
+    fit = (have_count + 1) / (have_count + gap_count + 2)
+    score = 1 + title + (1 if geo_ok else 0) + 6 * fit
+    return round(min(10.0, score), 1)
+
+
 def _score(hits, job, track_cfg, fit):
-    score = 2 + min(len(hits), 3)
-    remote = _is_remote(job)
-    if (track_cfg["remote"] and remote) or (
-            not track_cfg["remote"] and any(
-                c in _norm(job["job_title"]) or
-                c in _norm(job.get("location") or "")
-                for c in _OK_CITIES)):
-        score += 1
-    score += 2 if fit.ratio is None else round(4 * fit.ratio)
-    return min(10, score)
+    return score_from(len(hits), len(fit.have), len(fit.gaps),
+                      _geo_bonus(job, track_cfg))
 
 
 def _why_fit(job, track, hits, fit):

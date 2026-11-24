@@ -63,7 +63,9 @@ def sort_jobs(jobs, sort_by="date"):
                 return -float(j.get("match_score") or 0)
             except ValueError:
                 return 0
-        return sorted(jobs, key=_score_key)
+        # Newest first within equal scores (stable sort over the date order).
+        by_date = sorted(jobs, key=lambda j: j.get("date") or "", reverse=True)
+        return sorted(by_date, key=_score_key)
     return sorted(
         jobs,
         key=lambda j: (0 if j.get("date") else 1, j.get("date", "")),
@@ -102,6 +104,7 @@ def get_jobs(strict=False):
         j.setdefault("date", "")
         j.setdefault("match_score", "")
         j["match_score"] = _norm_score(j.get("match_score"))
+        j["location_raw"] = (j.get("location") or "").strip()
         j["location"] = _normalize_location(j.get("location"))
         jobs.append(j)
     return sort_jobs(jobs)
@@ -145,6 +148,7 @@ def apply_filters(jobs, track=None, status=None, exclude_status=None, location=N
                     j.get("job_title", ""),
                     j.get("company", ""),
                     j.get("location", ""),
+                    j.get("location_raw", ""),
                     j.get("track", ""),
                 ]
             ).lower()
@@ -279,18 +283,49 @@ def _norm_score(value):
     return str(min(10.0, v))
 
 
+_REMOTE_WORDS = re.compile(
+    r"remote|hybrid|home\s?office|work from home|wfh|à distance|telearbeit|mobiles arbeiten",
+    re.IGNORECASE)
+
+
+def _term_re(term):
+    return re.compile(rf"(?<![a-z0-9]){re.escape(term.lower())}(?![a-z0-9])")
+
+
+_LOCATION_GROUPS = None
+
+
+def _location_groups():
+    """(label, [patterns]) per geo group, configured cities first.
+
+    Uses each group's ``terms`` plus optional display-only ``display_terms``
+    (these label the dropdown; they never widen the geo allowlist).
+    """
+    global _LOCATION_GROUPS
+    if _LOCATION_GROUPS is None:
+        groups = [(c, [_term_re(c)]) for c in config.cities()]
+        for g in config.geo_groups():
+            terms = list(g.get("terms") or []) + list(g.get("display_terms") or [])
+            groups.append((g["label"], [_term_re(t) for t in terms if t.strip()]))
+        _LOCATION_GROUPS = groups
+    return _LOCATION_GROUPS
+
+
 def _normalize_location(loc):
-    """Collapse city/remote variants into canonical groups."""
+    """Collapse a free-text location into a short filter label.
+
+    Configured cities win ("Berlin", "London / Remote"), then geo groups
+    ("Munich, Bayern" -> "Germany", "Glasgow, Scotland" -> "United Kingdom").
+    Anything else is "Remote", "Other" or "Unspecified".
+    """
     raw = (loc or "").lower().strip()
-    has_remote = "remote" in raw or "hybrid" in raw
-    for city in config.cities():
-        if city.lower() in raw:
-            return f"{city} / Remote" if has_remote else city
-    if has_remote:
-        return "Remote"
-    if raw:
-        return raw.title()
-    return "Unspecified"
+    if not raw:
+        return "Unspecified"
+    has_remote = bool(_REMOTE_WORDS.search(raw))
+    for label, patterns in _location_groups():
+        if any(p.search(raw) for p in patterns):
+            return f"{label} / Remote" if has_remote else label
+    return "Remote" if has_remote else "Other"
 
 
 def has_duplicate(candidate, jobs=None):

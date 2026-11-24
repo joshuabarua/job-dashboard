@@ -688,12 +688,30 @@ class TestResumeFit(unittest.TestCase):
     def test_score_examples(self):
         cfg = jobsearch.TRACKS["Developer"]
         j = job(title="React Developer", remote=True)
-        self.assertEqual(
-            jobsearch._score(["react"], j, cfg,
-                             jobsearch.Fit(["react"], [], 1.0)), 8)
-        self.assertEqual(
-            jobsearch._score(["react"], j, cfg,
-                             jobsearch.Fit(["react"], [], None)), 6)
+        def score(have, gaps, hits=("react",)):
+            return jobsearch._score(list(hits), j, cfg,
+                                    jobsearch.Fit(have, gaps, None))
+        # 1 base + 1 hit + 1 remote + 6 * (have+1)/(detected+2)
+        self.assertEqual(score([], []), 6.0)            # no evidence: neutral
+        self.assertEqual(score(["react"], []), 7.0)
+        self.assertEqual(score(["react", "typescript", "css", "git",
+                                "redux"], ["angular"]), 7.5)
+        self.assertEqual(score([], ["java", "aws", "kotlin"]), 4.2)
+        self.assertEqual(score(["react"], [], hits=("a", "b", "c")), 8.0)
+        self.assertEqual(jobsearch._score(
+            ["react"], job(title="React Developer", location="Munich"), cfg,
+            jobsearch.Fit([], [], None)), 5.0)        # no geo bonus
+
+    def test_score_spreads(self):
+        # More evidence moves the score further from neutral in both directions.
+        strong = jobsearch.score_from(1, 10, 1, True)
+        weak = jobsearch.score_from(1, 1, 0, True)
+        unknown = jobsearch.score_from(1, 0, 0, True)
+        poor = jobsearch.score_from(1, 1, 6, True)
+        self.assertGreater(strong, weak)
+        self.assertGreater(weak, unknown)
+        self.assertGreater(unknown, poor)
+        self.assertLessEqual(jobsearch.score_from(9, 99, 0, True), 10)
 
     def test_config_validation(self):
         data = json.loads((ROOT / "config.json").read_text())
@@ -737,7 +755,8 @@ class TestResumeFit(unittest.TestCase):
         high = out[0]
         self.assertTrue(high["_verified"])
         self.assertEqual(high["fit"]["ratio"], 1.0)
-        self.assertEqual(high["match_score"], 8)
+        # 1 + 1 hit + 1 remote + 6 * (5+1)/(5+2) for react/ts/graphql/docker/ci
+        self.assertEqual(high["match_score"], 8.1)
 
     def test_arbeitnow_description_stripped(self):
         payload = {"data": [{
@@ -962,3 +981,50 @@ class TestBuildStatic(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLocationLabels(unittest.TestCase):
+    def test_groups(self):
+        cases = {
+            "Berlin, Germany": "Berlin",
+            "Berlin (Hybrid)": "Berlin / Remote",
+            "London": "London",
+            "Glasgow, Scotland, United Kingdom": "United Kingdom",
+            "Zilch Uk": "United Kingdom",
+            "Edinburgh": "United Kingdom",
+            "Munich, Bayern, Germany": "Germany",
+            "Bielefeld": "Germany",
+            "Remote - Germany": "Germany / Remote",
+            "Home Office Deutschland": "Germany / Remote",
+            "Poste À Distance": "Remote",
+            "Usa, Canada, Argentina": "Other",
+            "": "Unspecified",
+        }
+        for raw, label in cases.items():
+            self.assertEqual(tracker._normalize_location(raw), label, raw)
+
+    def test_display_terms_do_not_widen_geo(self):
+        # "Munich" labels as Germany but is not geo evidence for the filter.
+        self.assertNotIn("munich", [t for g in config.geo_groups()
+                                    for t in g.get("terms", [])])
+
+
+class TestRescore(unittest.TestCase):
+    def setUp(self):
+        import rescore
+        self.rescore = rescore.rescore
+
+    def test_new_format(self):
+        j = {"track": "Developer", "job_title": "React Developer",
+             "location": "Remote",
+             "why_fit": "Title: react; Fit: 5/6 (have: a; missing: b); remote"}
+        self.assertEqual(self.rescore(j), jobsearch.score_from(1, 5, 1, True))
+
+    def test_legacy_format_rechecks_title(self):
+        j = {"track": "Developer", "location": "London",
+             "job_title": "React TypeScript Developer",
+             "why_fit": "Matches: react, typescript; source: websearch"}
+        self.assertEqual(self.rescore(j), jobsearch.score_from(2, 2, 0, False))
+
+    def test_unknown_track_skipped(self):
+        self.assertIsNone(self.rescore({"track": "Nope", "why_fit": ""}))

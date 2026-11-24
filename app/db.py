@@ -120,3 +120,12 @@ def delete_by_id(id):
         client.table("jobs").delete().eq("id", id).execute()
     except Exception as exc:
         raise RuntimeError(f"delete_by_id failed: {exc}") from exc
+
+
+def update_score(id, match_score):
+    if not ENABLED or client is None:
+        raise RuntimeError("Supabase not configured")
+    try:
+        client.table("jobs").update({"match_score": str(match_score)}).eq("id", id).execute()
+    except Exception as exc:
+        raise RuntimeError(f"update_score failed: {exc}") from exc

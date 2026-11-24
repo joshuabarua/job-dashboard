@@ -1,15 +1,12 @@
 name: Job Search Heartbeat
 
 on:
-  push:
-    branches: [main]
   schedule:
-    - cron: '0 6,12,18 * * *'
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+    - cron: '17 5 * * *'   # once a day, 05:17 UTC
+  workflow_dispatch:       # Actions tab -> Run workflow, for an on-demand refresh
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -50,7 +47,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          WEBSEARCH_ENABLED: ${{ (github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+          WEBSEARCH_ENABLED: '1'
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           LINKUP_API_KEY: ${{ secrets.LINKUP_API_KEY }}
@@ -61,6 +58,12 @@ jobs:
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           REED_API_KEY: ${{ secrets.REED_API_KEY }}
 
+      - name: Rescore stored jobs (writes only rows whose score changed)
+        run: python scripts/rescore.py --apply
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       - name: Build static site
         run: python scripts/build_static.py
         env:
@@ -68,19 +71,8 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_KEY_PUBLIC: ${{ secrets.SUPABASE_KEY_PUBLIC }}
 
-      - name: Commit updated data and site
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add public/
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: refresh jobs [$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
-            git pull --rebase || (git checkout --theirs public/ 2>/dev/null; python scripts/build_static.py; git add public/; GIT_EDITOR=true git rebase --continue)
-            git push
-          fi
-
+      # Data files are deployed to Pages only, never committed, so the repo
+      # does not grow with every run.
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

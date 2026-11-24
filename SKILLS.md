@@ -100,17 +100,23 @@ posting body (`Low resume match (verified)`).
 The match score is a 0–10 value shown on each card.
 
 ```
-score = 2 + min(keyword hits, 3)
-+ 1 if (remote track and remote job) or
-       (on-site track and a configured city in title or location)
-+ 2 if resume fit is unknown, else round(4 × fit ratio)
-score = min(10, score)
+fit   = (have + 1) / (have + missing + 2)     # smoothed resume-fit ratio
+score = 1                                     # base
+      + min(title keyword hits, 2)
+      + 1 if (remote track and remote job) or
+             (on-site track and a configured city in title or location)
+      + 6 × fit
+score = round(min(10, score), 1)
 ```
 
-- 2 is the base, plus up to 3 for title keyword hits.
-- Remote/geo fit adds 1.
-- Resume fit adds 0–4 (unknown fit always adds 2).
-- 10 is the maximum.
+- Resume fit carries most of the weight (0–6), so sorting by score puts
+  evidence-backed matches first.
+- The smoothing means a job with no detected skills sits at the neutral
+  midpoint (fit 0.5 → 3 points), and more evidence pushes it further either
+  way: 1/1 have → 4.0, 12/13 → 5.2, 0/6 → 0.75.
+- Equal scores sort newest first.
+- `scripts/rescore.py` re-applies the formula to stored rows (run daily by the
+  workflow; only changed rows are written).
 
 ## Adding or Changing Skills
 
