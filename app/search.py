@@ -477,6 +477,157 @@ def _fetch_html_boards():
         raise RuntimeError("all html boards failed: " + "; ".join(failures))
 
 
+# --- Company ATS feeds (public JSON, no key) --------------------------------
+# Each employer's applicant-tracking system publishes its open roles with the
+# real company, location and full description, so these rows can be scored
+# for resume fit (unlike scraped listing links).
+
+def _gh_jobs(slug, company):
+    data = _get_json(
+        f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true")
+    for j in data.get("jobs", []):
+        loc = (j.get("location") or {}).get("name") or ""
+        yield {
+            "job_title": j.get("title", ""),
+            "company": j.get("company_name") or company,
+            "location": loc,
+            "url": j.get("absolute_url", ""),
+            "tags": [d.get("name", "") for d in j.get("departments") or []],
+            "remote": bool(_REMOTE_RE.search(loc)),
+            # Greenhouse double-escapes the HTML body.
+            "description": _clean_html(_html.unescape(j.get("content") or "")),
+        }
+
+
+def _lever_jobs(slug, company):
+    data = _get_json(f"https://api.lever.co/v0/postings/{slug}?mode=json")
+    for j in data if isinstance(data, list) else []:
+        cats = j.get("categories") or {}
+        loc = ", ".join(cats.get("allLocations") or []) or cats.get("location") or ""
+        yield {
+            "job_title": j.get("text", ""),
+            "company": company,
+            "location": loc,
+            "url": j.get("hostedUrl", ""),
+            "tags": [t for t in (cats.get("team"), cats.get("department")) if t],
+            "remote": j.get("workplaceType") == "remote"
+            or bool(_REMOTE_RE.search(loc)),
+            "description": (j.get("descriptionPlain") or "")[:5000],
+        }
+
+
+def _ashby_jobs(slug, company):
+    data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
+    for j in data.get("jobs", []):
+        if j.get("isListed") is False:
+            continue
+        locs = [j.get("location") or ""] + [
+            x.get("location", "") for x in j.get("secondaryLocations") or []]
+        yield {
+            "job_title": j.get("title", ""),
+            "company": company,
+            "location": ", ".join(l for l in locs if l),
+            "url": j.get("jobUrl", ""),
+            "tags": [t for t in (j.get("department"), j.get("team")) if t],
+            "remote": bool(j.get("isRemote")),
+            "description": (j.get("descriptionPlain") or "")[:5000],
+        }
+
+
+def _workable_jobs(slug, company):
+    data = _get_json(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
+    for j in data.get("jobs", []):
+        loc = ", ".join(x for x in (j.get("city"), j.get("country")) if x)
+        yield {
+            "job_title": j.get("title", ""),
+            "company": data.get("name") or company,
+            "location": loc,
+            "url": j.get("url") or j.get("shortlink") or "",
+            "tags": [j["department"]] if j.get("department") else [],
+            "remote": bool(j.get("telecommuting")),
+            "description": "",
+        }
+
+
+_SR_MAX = 1000
+
+
+def _smartrecruiters_jobs(slug, company):
+    offset = 0
+    while offset < _SR_MAX:
+        data = _get_json(
+            f"https://api.smartrecruiters.com/v1/companies/{slug}/postings"
+            f"?limit=100&offset={offset}")
+        rows = data.get("content") or []
+        for j in rows:
+            loc = j.get("location") or {}
+            yield {
+                "job_title": j.get("name", ""),
+                "company": (j.get("company") or {}).get("name") or company,
+                "location": ", ".join(
+                    x for x in (loc.get("city"), (loc.get("country") or "").upper()) if x),
+                "url": f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
+                "tags": [x.get("label", "") for x in
+                         (j.get("function"), j.get("experienceLevel")) if x],
+                "remote": bool(loc.get("remote")),
+                "description": "",
+            }
+        if len(rows) < 100:
+            return
+        offset += 100
+
+
+_ATS_FETCHERS = {
+    "greenhouse": _gh_jobs,
+    "lever": _lever_jobs,
+    "ashby": _ashby_jobs,
+    "workable": _workable_jobs,
+    "smartrecruiters": _smartrecruiters_jobs,
+}
+
+
+def _fetch_ats():
+    """Company career feeds from config.sources.ats. One failing employer is
+    logged and skipped; the adapter only fails when every feed fails."""
+    feeds = config.sources().get("ats") or []
+    failures = []
+    for feed in feeds:
+        provider, slug = feed["provider"], feed["slug"]
+        name = f"{provider}:{slug}"
+        try:
+            for job in _ATS_FETCHERS[provider](slug, feed.get("company") or slug):
+                job["_source"] = name
+                yield job
+        except Exception as e:
+            failures.append(f"{name}: {e}")
+            print(f"[search] {name} failed: {e}", file=sys.stderr)
+    if feeds and len(failures) == len(feeds):
+        raise RuntimeError("all ATS feeds failed: " + "; ".join(failures))
+
+
+def _fetch_berlinstartupjobs():
+    """berlinstartupjobs.com RSS: titles are "Role // Company", all Berlin."""
+    import xml.etree.ElementTree as ET
+    req = urllib.request.Request(
+        "https://berlinstartupjobs.com/feed/",
+        headers={"User-Agent": "Mozilla/5.0 (JobCommandCenter)"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        root = ET.fromstring(resp.read())
+    for item in root.iter("item"):
+        raw_title = (item.findtext("title") or "").strip()
+        title, _, company = raw_title.partition(" // ")
+        yield {
+            "job_title": _html.unescape(title.strip()),
+            "company": _html.unescape(company.strip()),
+            "location": "Berlin",
+            "url": (item.findtext("link") or "").strip(),
+            "tags": [c.text for c in item.findall("category") if c.text],
+            "remote": False,
+            "description": _clean_html(item.findtext("description")),
+            "_source": "berlinstartupjobs",
+        }
+
+
 # --- Web search (metered providers; WEBSEARCH_ENABLED gated) ---------------
 
 def _domain_label(url):
@@ -1293,11 +1444,14 @@ def _adapters(track=None):
             ("jobicy", _fetch_jobicy),
             ("weworkremotely", _fetch_wwr),
             ("html_boards", _fetch_html_boards),
+            ("berlinstartupjobs", _fetch_berlinstartupjobs),
         ]
         if config.source_enabled(name)
     ]
     if track and track in TRACKS and not TRACKS[track].get("remote"):
         adapters = [(n, f) for n, f in adapters if n not in remote_only]
+    if config.sources().get("ats"):
+        adapters.append(("ats", _fetch_ats))
     adapters.append(("arbeitsagentur", _fetch_arbeitsagentur))
     if (os.environ.get("ADZUNA_APP_ID") or "").strip() \
             and (os.environ.get("ADZUNA_APP_KEY") or "").strip():
@@ -1389,7 +1543,17 @@ def collect_with_report(track=None):
             known_jobs.append(c)
         final.append(c)
     final.sort(key=lambda c: (c["_dup_flag"], -c["match_score"], c["track"]))
-    return SearchResult(candidates=final[:40], report=report)
+    return SearchResult(candidates=final[:_max_candidates()], report=report)
+
+
+def _max_candidates():
+    """New-job cap per run (MAX_CANDIDATES env, default 150). Unique
+    candidates sort first, so the cap only ever trims duplicates or the
+    lowest-scoring fresh roles."""
+    try:
+        return max(1, int(os.environ.get("MAX_CANDIDATES") or 150))
+    except ValueError:
+        return 150
 
 
 def collect(track=None):

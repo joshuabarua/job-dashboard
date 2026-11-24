@@ -35,6 +35,17 @@
     ]
   },
   "tracks": {
+    "Forward Deployed Engineer": {
+      "keywords": [
+        "forward deployed", "forward-deployed", "fde",
+        "deployed engineer", "deployment strategist"
+      ],
+      "search_terms": ["forward deployed engineer"],
+      "remote": true,
+      "location": "Berlin (hybrid)/Remote",
+      "cv": "Fullstack/Frontend CV",
+      "color": "accent"
+    },
     "Frontend Engineer": {
       "keywords": [
         "frontend engineer", "frontend developer", "front-end engineer",
@@ -420,6 +431,38 @@
     "arbeitsagentur": true,
     "arbeitsagentur_city": "Berlin",
     "html_boards": true,
+    "berlinstartupjobs": true,
+    "ats": [
+      {"provider": "greenhouse", "slug": "n26", "company": "N26"},
+      {"provider": "greenhouse", "slug": "sumup", "company": "SumUp"},
+      {"provider": "greenhouse", "slug": "hellofresh", "company": "HelloFresh"},
+      {"provider": "greenhouse", "slug": "celonis", "company": "Celonis"},
+      {"provider": "greenhouse", "slug": "contentful", "company": "Contentful"},
+      {"provider": "greenhouse", "slug": "raisin", "company": "Raisin"},
+      {"provider": "greenhouse", "slug": "solarisbank", "company": "Solaris"},
+      {"provider": "greenhouse", "slug": "moonfare", "company": "Moonfare"},
+      {"provider": "greenhouse", "slug": "commercetools", "company": "commercetools"},
+      {"provider": "greenhouse", "slug": "grover", "company": "Grover"},
+      {"provider": "greenhouse", "slug": "deliveroo", "company": "Deliveroo"},
+      {"provider": "greenhouse", "slug": "monzo", "company": "Monzo"},
+      {"provider": "greenhouse", "slug": "gocardless", "company": "GoCardless"},
+      {"provider": "greenhouse", "slug": "tide", "company": "Tide"},
+      {"provider": "greenhouse", "slug": "cleo", "company": "Cleo"},
+      {"provider": "greenhouse", "slug": "isomorphiclabs", "company": "Isomorphic Labs"},
+      {"provider": "greenhouse", "slug": "datadog", "company": "Datadog"},
+      {"provider": "greenhouse", "slug": "elastic", "company": "Elastic"},
+      {"provider": "lever", "slug": "palantir", "company": "Palantir"},
+      {"provider": "lever", "slug": "spotify", "company": "Spotify"},
+      {"provider": "ashby", "slug": "n8n", "company": "n8n"},
+      {"provider": "ashby", "slug": "parloa", "company": "Parloa"},
+      {"provider": "ashby", "slug": "elevenlabs", "company": "ElevenLabs"},
+      {"provider": "ashby", "slug": "synthesia", "company": "Synthesia"},
+      {"provider": "ashby", "slug": "supabase", "company": "Supabase"},
+      {"provider": "ashby", "slug": "linear", "company": "Linear"},
+      {"provider": "ashby", "slug": "posthog", "company": "PostHog"},
+      {"provider": "smartrecruiters", "slug": "DeliveryHero", "company": "Delivery Hero"},
+      {"provider": "smartrecruiters", "slug": "Sixt", "company": "Sixt"}
+    ],
     "boards": [
       {"name": "Reed UK", "url": "https://www.reed.co.uk/jobs/developer-jobs?q=developer", "location": "United Kingdom", "remote": false},
       {"name": "ImpactPool Germany", "url": "https://www.impactpool.org/countries/Germany", "location": "Germany", "remote": false},

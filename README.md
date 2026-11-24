@@ -94,6 +94,11 @@ Everything personal lives in `config.json`. No code edits needed.
     "adzuna_countries": ["de", "gb"],  // Adzuna countries (needs ADZUNA_* keys)
     "arbeitsagentur": true,       // German federal job board, no key — set false outside Germany
     "arbeitsagentur_city": "Berlin",
+    "berlinstartupjobs": true,    // berlinstartupjobs.com RSS, no key
+    "ats": [                      // company career feeds (public JSON, no key)
+      {"provider": "greenhouse", "slug": "monzo", "company": "Monzo"},
+      {"provider": "ashby", "slug": "n8n", "company": "n8n"}
+    ],                            // providers: greenhouse | lever | ashby | workable | smartrecruiters
     "html_boards": true,          // scrape the listing pages below
     "boards": [
       {"name": "My Board", "url": "https://example.com/jobs",
@@ -156,7 +161,24 @@ Tips:
 
 These work out of the box, no key needed: **Arbeitnow** (DE/EU),
 **Remotive**, **RemoteOK**, **Jobicy**, **WeWorkRemotely** (RSS),
-**Arbeitsagentur** (Germany). Toggle each in `config.json` → `sources`.
+**Arbeitsagentur** (Germany), **Berlin Startup Jobs** (RSS). Toggle each in
+`config.json` → `sources`.
+
+**Company career feeds** (`sources.ats`): most employers post jobs through an
+applicant-tracking system that publishes a free JSON feed. These rows carry
+the real company, location and full description, so resume fit can be
+scored. Find a company's slug in its careers-page URL:
+
+| Provider | Careers URL looks like | Slug |
+|---|---|---|
+| Greenhouse | `job-boards.greenhouse.io/monzo` | `monzo` |
+| Lever | `jobs.lever.co/palantir` | `palantir` |
+| Ashby | `jobs.ashbyhq.com/n8n` | `n8n` |
+| Workable | `apply.workable.com/acme` | `acme` |
+| SmartRecruiters | `jobs.smartrecruiters.com/Sixt` | `Sixt` |
+
+A feed that fails (company moved provider, slug renamed) is logged under
+`errors` in the run report and skipped; the rest still run.
 
 ### 4b. Job-board APIs — free key, better coverage
 
@@ -237,7 +259,7 @@ timestamp) for the static dashboard's "Last search" funnel.
 Troubleshooting: mostly `location` rejects → the job's own text names no
 allowed geo (expected — false negatives are chosen over geo leaks). Check a
 card's `why_fit` for `source: <name>` to see where a candidate came from.
-Unique candidates always sort before duplicates, so the 40-candidate cap
+Unique candidates always sort before duplicates, so the per-run cap (`MAX_CANDIDATES`, default 150)
 cannot crowd out fresh roles. Optional adapters without API keys (Adzuna,
 Reed) are omitted from the run entirely — absent rows in the report mean
 the source was skipped, not that it failed.

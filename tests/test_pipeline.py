@@ -1028,3 +1028,107 @@ class TestRescore(unittest.TestCase):
 
     def test_unknown_track_skipped(self):
         self.assertIsNone(self.rescore({"track": "Nope", "why_fit": ""}))
+
+
+class TestForwardDeployedTrack(unittest.TestCase):
+    def match(self, title):
+        return next((name for name, cfg in jobsearch.TRACKS.items()
+                     if jobsearch._matches(job(title=title), cfg)), None)
+
+    def test_fde_titles(self):
+        for title in ["Forward Deployed Engineer",
+                      "Forward-Deployed Software Engineer, New Grad",
+                      "FDE - London",
+                      "Forward Deployed Frontend Engineer",   # wins over Frontend
+                      "Deployment Strategist"]:
+            self.assertEqual(self.match(title), "Forward Deployed Engineer", title)
+
+    def test_senior_fde_rejected(self):
+        self.assertIsNotNone(jobsearch._title_reject(
+            job(title="Senior Forward Deployed Engineer")))
+
+
+class TestAtsFeeds(unittest.TestCase):
+    PAYLOADS = {
+        "greenhouse": {"jobs": [{
+            "title": "Frontend Engineer", "company_name": "Monzo",
+            "location": {"name": "London, United Kingdom"},
+            "absolute_url": "https://job-boards.greenhouse.io/monzo/jobs/1",
+            "departments": [{"name": "Engineering"}],
+            "content": "&lt;p&gt;React &amp;amp; TypeScript&lt;/p&gt;"}]},
+        "lever": [{
+            "text": "Forward Deployed Engineer",
+            "categories": {"location": "London, United Kingdom", "team": "Eng"},
+            "hostedUrl": "https://jobs.lever.co/palantir/1",
+            "workplaceType": "onsite", "descriptionPlain": "Python and React"}],
+        "ashby": {"jobs": [
+            {"title": "Support Engineer", "location": "Berlin",
+             "secondaryLocations": [{"location": "Remote - Germany"}],
+             "jobUrl": "https://jobs.ashbyhq.com/n8n/1", "isRemote": True,
+             "isListed": True, "descriptionPlain": "Linux"},
+            {"title": "Hidden", "isListed": False, "jobUrl": "x"}]},
+        "workable": {"name": "Acme", "jobs": [{
+            "title": "QA Engineer", "city": "Berlin", "country": "Germany",
+            "url": "https://apply.workable.com/acme/j/1", "telecommuting": False}]},
+        "smartrecruiters": {"content": [{
+            "id": "77", "name": "IT Support", "company": {"name": "Sixt"},
+            "location": {"city": "Berlin", "country": "de", "remote": False}}]},
+    }
+
+    def fetch(self, provider):
+        payload = self.PAYLOADS[provider]
+        with patch.object(jobsearch, "_get_json", lambda url: payload):
+            return list(jobsearch._ATS_FETCHERS[provider]("slug", "Co"))
+
+    def test_greenhouse(self):
+        [j] = self.fetch("greenhouse")
+        self.assertEqual((j["company"], j["location"]),
+                         ("Monzo", "London, United Kingdom"))
+        self.assertEqual(j["description"], "React & TypeScript")
+        self.assertEqual(j["tags"], ["Engineering"])
+
+    def test_lever(self):
+        [j] = self.fetch("lever")
+        self.assertEqual(j["url"], "https://jobs.lever.co/palantir/1")
+        self.assertFalse(j["remote"])
+
+    def test_ashby_skips_unlisted_and_joins_locations(self):
+        [j] = self.fetch("ashby")
+        self.assertEqual(j["location"], "Berlin, Remote - Germany")
+        self.assertTrue(j["remote"])
+
+    def test_workable_and_smartrecruiters(self):
+        [w] = self.fetch("workable")
+        self.assertEqual((w["company"], w["location"]), ("Acme", "Berlin, Germany"))
+        [s] = self.fetch("smartrecruiters")
+        self.assertEqual(s["url"], "https://jobs.smartrecruiters.com/slug/77")
+        self.assertEqual(s["location"], "Berlin, DE")
+
+    def test_one_failing_feed_is_skipped(self):
+        feeds = [{"provider": "greenhouse", "slug": "bad"},
+                 {"provider": "greenhouse", "slug": "good"}]
+
+        def fake(url):
+            if "/bad/" in url:
+                raise OSError("404")
+            return self.PAYLOADS["greenhouse"]
+        with patch.object(jobsearch.config, "sources", lambda: {"ats": feeds}), \
+                patch.object(jobsearch, "_get_json", fake):
+            rows = list(jobsearch._fetch_ats())
+        self.assertEqual([r["_source"] for r in rows], ["greenhouse:good"])
+
+    def test_all_feeds_failing_raises(self):
+        feeds = [{"provider": "lever", "slug": "x"}]
+
+        def boom(url):
+            raise OSError("down")
+        with patch.object(jobsearch.config, "sources", lambda: {"ats": feeds}), \
+                patch.object(jobsearch, "_get_json", boom):
+            with self.assertRaises(RuntimeError):
+                list(jobsearch._fetch_ats())
+
+    def test_config_rejects_unknown_provider(self):
+        data = json.loads((ROOT / "config.json").read_text())
+        data["sources"]["ats"] = [{"provider": "nope", "slug": "x"}]
+        with self.assertRaisesRegex(ValueError, "provider"):
+            config.validate(data)

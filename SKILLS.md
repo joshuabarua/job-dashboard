@@ -8,6 +8,7 @@ Each track has a list of keywords, a preferred CV, and a location/remote prefere
 
 | Track | Keywords | Remote | Preferred CV | Notes |
 |---|---|---|---|---|
+| Forward Deployed Engineer | `forward deployed`, `forward-deployed`, `fde`, `deployed engineer`, `deployment strategist` | Yes | Fullstack/Frontend CV | Customer-facing engineering roles (Palantir-style FDE, AI startups); first in order so it wins over Frontend/Developer |
 | Frontend Engineer | `frontend`, `react`, `typescript`, `next.js`, `vue`, `tailwind`, `react native`, `expo`, `zustand`, `remix`, `svelte`, `tanstack`, `redux` | Yes | Frontend CV | Web UI focused |
 | Product Engineer | `product engineer`, `product developer` | Yes | Fullstack/Frontend CV | Product-led fullstack roles |
 | QA Automation Engineer | `qa automation`, `qa`, `automation`, `test engineer`, `sdet` | Yes | QA / Test Automation CV | Quality and test roles |

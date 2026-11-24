@@ -7,6 +7,9 @@ _PATH = Path(__file__).resolve().parent.parent / "config.json"
 _data = None
 
 
+ATS_PROVIDERS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters")
+
+
 def _require(cond, msg):
     if not cond:
         raise ValueError(msg)
@@ -98,6 +101,13 @@ def validate(data):
                      f"{path}.{field}: must be a non-empty string")
         _require(isinstance(b.get("remote"), bool),
                  f"{path}.remote: must be a boolean")
+    for i, a in enumerate(sources.get("ats") or []):
+        path = f"config.sources.ats[{i}]"
+        _require(isinstance(a, dict), f"{path}: must be an object")
+        _require(a.get("provider") in ATS_PROVIDERS,
+                 f"{path}.provider: must be one of {', '.join(ATS_PROVIDERS)}")
+        _require(_nonempty_str(a.get("slug")),
+                 f"{path}.slug: must be a non-empty string")
     for i, s in enumerate(sources.get("extract_seeds") or []):
         path = f"config.sources.extract_seeds[{i}]"
         _require(isinstance(s, dict), f"{path}: must be an object")
